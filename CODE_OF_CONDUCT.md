@@ -1,9 +1,9 @@
-# Hibernate ORM Code of Conduct
+# Hibernate Code of Conduct
 
 All participants in Hibernate projects are expected to adhere to the Commonhaus Foundation Code of Conduct. Please ensure you are familiar with its guidelines and expectations, as it’s essential for maintaining a positive and collaborative environment.
 The complete Code of Conduct, can be reviewed [here](https://www.commonhaus.org/policies/code-of-conduct/).
 
-## Hibernate ORM Contact information
+Contact information:
 
 - To report an issue, CoC reports should be sent to `admin@hibernate.org`. We will follow [CF CoC procedures][coc-reports] when handling CoC reports.
 - To [escalate an issue][coc-escalation], reports should be sent to the [`coc-escalation` mailing list][CONTACTS.yaml] for review by the [Code of Conduct Panel (COCP)][cocp].
