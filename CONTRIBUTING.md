@@ -19,7 +19,7 @@ we ask that you mind.
 
 For code contributions, these guidelines include (**where applicable**):
 * Respect the project code style.
-* Have a corresponding JIRA [issue](https://hibernate.atlassian.net/browse/HHH) and be sure to include the key for this JIRA issue in your commit messages.
+* Have a corresponding JIRA [issue](https://hibernate.atlassian.net/) and be sure to include the key for this JIRA issue in your commit messages.
 * Have a set of appropriate tests.
   	
 	When submitting bug reports, the tests should reproduce the initially reported bug and illustrate that your solution addresses the issue.
@@ -44,9 +44,6 @@ the linked page, this also includes:
     * [set up your local git install](https://help.github.com/articles/set-up-git) 
     * clone your fork
 * Instruct git to ignore certain commits when using `git blame`. From the directory of your local clone, run this: `git config blame.ignoreRevsFile .git-blame-ignore-revs`
-* See the wiki pages for setting up your IDE, whether you use 
-[IntelliJ IDEA](https://hibernate.org/community/contribute/intellij-idea/)
-or [Eclipse](https://hibernate.org/community/contribute/eclipse-ide/)<sup>(1)</sup>.
 
 
 ## Create the working (topic) branch
