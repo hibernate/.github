@@ -3,7 +3,7 @@
 Contributions from the community are essential in keeping Hibernate (and any Open Source
 project really) strong and successful.  
 
-# Legal
+## Legal
 
 You should check the relevant license under which all contributions will be licensed for the specific project you are contributing to.
 
