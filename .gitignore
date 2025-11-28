@@ -1,0 +1,9 @@
+*.tmp
+
+# Apple users
+**/.DS_Store
+
+# IDEA users
+*.iml
+.idea
+.project
