@@ -1,0 +1,14 @@
+[
+  {
+    "login": "sebersole",
+    "avatar_url": "https://avatars.githubusercontent.com/u/234515?v=4",
+    "html_url": "https://github.com/sebersole",
+    "alumnus": false
+  },
+  {
+    "login": "stliu",
+    "avatar_url": "https://avatars.githubusercontent.com/u/174662?v=4",
+    "html_url": "https://github.com/stliu",
+    "alumnus": true
+  }
+]
