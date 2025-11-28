@@ -1,0 +1,31 @@
+name: "Update metadata"
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 0'
+
+permissions:
+  contents: write
+jobs:
+  update-members:
+    name: "Update members.json"
+    runs-on: ubuntu-latest
+    if: github.repository == 'hibernate/.github'
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # 6.0.0
+      with:
+        fetch-depth: 1
+    - name: Configure for commits
+      run: |
+        git config --global user.name 'GitHub Actions'
+        git config --global user.email 'admin@hibernate.org'
+    - run: ./scripts/update-members.sh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN_FOR_METADATA_UPDATE }}
+    - name: Push changes if any
+      run: |
+        git add -A
+        git commit -m "Update members.json" || true
+        git push
