@@ -6,7 +6,7 @@ This document explains how to report security issues for **Hibernate** projects.
 
 Please report suspected security issues privately.
 
-- Email **secalert@redhat.com**. Find more details in the [Security Contacts and Procedures](https://access.redhat.com/security/team/contact/#contact).
+- Email **psirt@us.ibm.com**. Find more details (PGP key, other ways of reaching out) in [IBM's Security Vulnerability Management page](https://www.ibm.com/trust/security-vulnerability-management).
 - Do **not** open a public JIRA/GitHub issue for suspected vulnerabilities.
 
 When reporting, please include:
@@ -36,7 +36,7 @@ A short embargo may be considered in exceptional cases (e.g., downstream user pr
 
 Reporters should understand that:
 
-- This project's security reports are handled by volunteers and Red Hat.
+- This project's security reports are handled by volunteers and IBM.
 - Reports with clear steps, proof-of-concept, or test cases help us respond faster.
 - Respecting maintainer capacity and workload benefits the community overall.
 
