@@ -1,0 +1,75 @@
+# This is a shared workflow used within the Hibernate GitHub organization
+#  that sends the notifications to the Zulip channels when the build it is included in is failing.
+#
+# To include this workflow in a Hibernate project GitHub workflow:
+#   1. Add one more "job" (notification) to the list in the workflow file, e.g.
+#
+#      jobs:
+#         notification:
+#           name: Notify about build failures
+#           # List the other build jobs that we want to "monitor for failures":
+#           needs: build
+#           if: ${{failure()}}
+#           uses: hibernate/.github/.github/workflows/send-notification.yml@main
+#         build:
+#           name: ...
+#           ...
+#   2. Done ;)
+
+name: 'Send Zulip notification'
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Figure out where to send the notification to
+        id: notification-destination
+        shell: bash
+        run: |
+          case "${{ github.repository }}" in
+            # Let's try to figure out where we want to send the message to
+            #  without requiring the input params, so that in the future we wouldn't need
+            #  to go to all the repos using this one and update them if we decide to change things up a bit.
+            "hibernate/hibernate-validator")
+              echo "stream=hibernate-validator-dev" >> "$GITHUB_OUTPUT"
+              echo "topic=GitHub workflow failures" >> "$GITHUB_OUTPUT"
+            ;;
+            "hibernate/hibernate-search")
+              echo "stream=hibernate-search-dev" >> "$GITHUB_OUTPUT"
+              echo "topic=GitHub workflow failures" >> "$GITHUB_OUTPUT"
+            ;;
+            "hibernate/hibernate-orm")
+              echo "stream=hibernate-orm-dev" >> "$GITHUB_OUTPUT"
+              echo "topic=GitHub workflow failures" >> "$GITHUB_OUTPUT"
+            ;;
+            "hibernate/hibernate-reactive")
+              echo "stream=hibernate-reactive-dev" >> "$GITHUB_OUTPUT"
+              echo "topic=GitHub workflow failures" >> "$GITHUB_OUTPUT"
+            ;;
+            * )
+            # well... just post to infra and hope for the best :) ?
+              if [[ "$REPO_BRANCH_1" =~ "^hibernate/.*$" ]]; then
+                echo "stream=hibernate-infra" >> "$GITHUB_OUTPUT"
+                echo "topic=GitHub workflow failures" >> "$GITHUB_OUTPUT"
+              else
+                echo "SKIP: '${{ github.repository }}' is not in the Hibernate organization. No notifications will be sent."
+                echo "stream=" >> "$GITHUB_OUTPUT"
+                echo "topic=" >> "$GITHUB_OUTPUT"
+              fi
+            ;;
+          esac
+          echo "message=The GitHub [build #${{github.run_id}}](https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}) failed and requires your attention :warning:" >> "$GITHUB_OUTPUT"
+      - name: Notify the build failure
+        uses: zulip/github-actions-zulip/send-message@e4c8f27c732ba9bd98ac6be0583096dea82feea5 # v1.0.2
+        if: ${{ steps.notification-destination.outputs.stream != '' }}
+        with:
+          api-key: ${{ secrets.ZULIP_GITHUB_WORKFLOW_NOTIFICATION_API_KEY }}
+          email: ${{ secrets.ZULIP_GITHUB_WORKFLOW_NOTIFICATION_EMAIL }}
+          organization-url: "https://hibernate.zulipchat.com"
+          type: "stream"
+          to: "${{steps.notification-destination.outputs.stream}}"
+          topic: "${{steps.notification-destination.outputs.topic}}"
+          content: "${{steps.notification-destination.outputs.message}}"
