@@ -14,12 +14,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: |
-          if gh pr view $PR_NUMBER --json files --jq '.files.[].path' | grep -E '^\.github/workflows/'; then
-            echo "any_workflow_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "any_workflow_changed=false" >> "$GITHUB_OUTPUT"
-          fi
+          set -e # Fail if the gh command fails (e.g. can't connect, ...)
+          # JQ checks if ANY file path starts with our target directory, returning a literal "true" or "false"
+          IS_CHANGED=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json files --jq 'any(.files[]; .path | startswith(".github/workflows/"))')
+          # Output the result directly to GitHub Actions
+          echo "any_workflow_changed=$IS_CHANGED" >> "$GITHUB_OUTPUT"
       - name: Shallow check out repository code
         if: steps.change-detector.outputs.any_workflow_changed == 'true'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
