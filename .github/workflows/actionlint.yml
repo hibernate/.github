@@ -18,6 +18,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
+          echo "${{ github.event.workflow_run.head_branch }}"
           set -e # Fail if the gh command fails (e.g. can't connect, ...)
           # JQ checks if ANY file path starts with our target directory, returning a literal "true" or "false"
           IS_CHANGED=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json files --jq 'any(.files[]; .path | startswith(".github/workflows/"))')
