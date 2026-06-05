@@ -23,11 +23,24 @@ jobs:
           IS_CHANGED=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json files --jq 'any(.files[]; .path | startswith(".github/workflows/"))')
           # Output the result directly to GitHub Actions
           echo "any_workflow_changed=$IS_CHANGED" >> "$GITHUB_OUTPUT"
+          echo 'Running actionlint; see here for config (actionlint.yml, ...): https://github.com/hibernate/.github/blob/main/.github/workflows/actionlint.yml'
       - name: Shallow check out repository code
         if: steps.change-detector.outputs.any_workflow_changed == 'true'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 1
+      # https://github.com/rhysd/actionlint/blob/main/docs/config.md
+      - name: Set up actionlint.yml
+        if: steps.change-detector.outputs.any_workflow_changed == 'true'
+        run: |
+          # We override any repository config, so that PRs cannot change it.
+          rm -f '.github/actionlint.yml' '.github/actionlint.yaml'
+          cat << 'EOF' > '.github/actionlint.yml'
+          self-hosted-runner:
+            # Labels of self-hosted runner in array of strings.
+            labels:
+              - OracleTestPilot
+          EOF
       # https://github.com/rhysd/actionlint/blob/main/docs/usage.md#problem-matchers
       # https://raw.githubusercontent.com/rhysd/actionlint/main/.github/actionlint-matcher.json
       - name: Set up actionlint matcher
