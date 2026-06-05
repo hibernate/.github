@@ -8,6 +8,8 @@ jobs:
   actionlint:
     name: actionlint
     runs-on: ubuntu-latest
+    env:
+      ACTIONLINT_MATCHER_PATH: .github/workflows/actionlint-matcher.json
     steps:
       - name: Detect workflow changes
         id: change-detector
@@ -26,10 +28,35 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 1
+      # https://github.com/rhysd/actionlint/blob/main/docs/usage.md#problem-matchers
+      # https://raw.githubusercontent.com/rhysd/actionlint/main/.github/actionlint-matcher.json
+      - name: Set up actionlint matcher
+        if: steps.change-detector.outputs.any_workflow_changed == 'true'
+        run: |
+          [[ -f "$ACTIONLINT_MATCHER_PATH" ]] && exit 0
+          cat << 'EOF' > "$ACTIONLINT_MATCHER_PATH"
+          {
+            "problemMatcher": [
+              {
+                "owner": "actionlint",
+                "pattern": [
+                  {
+                    "regexp": "^(?:\\x1b\\[\\d+m)?(.+?)(?:\\x1b\\[\\d+m)*:(?:\\x1b\\[\\d+m)*(\\d+)(?:\\x1b\\[\\d+m)*:(?:\\x1b\\[\\d+m)*(\\d+)(?:\\x1b\\[\\d+m)*: (?:\\x1b\\[\\d+m)*(.+?)(?:\\x1b\\[\\d+m)* \\[(.+?)\\]$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "message": 4,
+                    "code": 5
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
       # https://github.com/rhysd/actionlint/blob/main/docs/usage.md#use-actionlint-on-github-actions
       - name: Download and run actionlint
         if: steps.change-detector.outputs.any_workflow_changed == 'true'
         run: |
-          echo "::add-matcher::.github/actionlint-matcher.json"
+          echo "::add-matcher::$ACTIONLINT_MATCHER_PATH"
           bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
           ./actionlint -color
