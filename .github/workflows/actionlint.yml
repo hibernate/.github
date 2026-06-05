@@ -4,8 +4,8 @@ on:
   pull_request:
 
 jobs:
-  lint-workflows:
-    name: Run actionlint if necessary
+  actionlint:
+    name: actionlint
     runs-on: ubuntu-latest
     steps:
       - name: Detect workflow changes
