@@ -1,0 +1,33 @@
+name: GitHub Actions linter
+
+on:
+  pull_request:
+
+jobs:
+  lint-workflows:
+    name: Run actionlint if necessary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Detect workflow changes
+        id: change-detector
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if gh pr view $PR_NUMBER --json files --jq '.files.[].path' | grep -E '^\.github/workflows/'; then
+            echo "any_workflow_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any_workflow_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Shallow check out repository code
+        if: steps.change-detector.outputs.any_workflow_changed == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      # https://github.com/rhysd/actionlint/blob/main/docs/usage.md#use-actionlint-on-github-actions
+      - name: Download and run actionlint
+        if: steps.change-detector.outputs.any_workflow_changed == 'true'
+        run: |
+          echo "::add-matcher::.github/actionlint-matcher.json"
+          bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
