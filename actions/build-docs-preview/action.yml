@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Red Hat Inc. and Hibernate Authors
+
+name: 'Build Documentation Preview'
+description: 'Detect doc changes and upload built documentation as artifact for preview deployment'
+
+inputs:
+  dist-path:
+    description: 'Path to built documentation output directory'
+    required: true
+  docs-paths:
+    description: 'Comma-separated paths for change detection (e.g. "documentation/src,docs/")'
+    required: true
+  label:
+    description: 'Label name that triggers preview for external contributors'
+    required: false
+    default: 'preview-docs'
+  artifact-name:
+    description: 'Name of the artifact to upload'
+    required: false
+    default: 'docs-preview'
+  retention-days:
+    description: 'Number of days to retain the artifact'
+    required: false
+    default: '1'
+
+outputs:
+  should-deploy:
+    description: 'Whether docs were built and uploaded for preview deployment'
+    value: ${{ steps.check.outputs.should-deploy }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check if docs preview should be built
+      id: check
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
+        PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        LABEL_NAME: ${{ inputs.label }}
+        DOCS_PATHS: ${{ inputs.docs-paths }}
+        BASE_REF: ${{ github.event.pull_request.base.ref }}
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        if [ "$EVENT_NAME" != "pull_request" ]; then
+          echo "::notice::Not a pull_request event ($EVENT_NAME), skipping docs preview"
+          echo "should-deploy=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        IS_ORG_MEMBER=false
+        if [ "$AUTHOR_ASSOCIATION" = "MEMBER" ] || [ "$AUTHOR_ASSOCIATION" = "COLLABORATOR" ] || [ "$AUTHOR_ASSOCIATION" = "OWNER" ]; then
+          IS_ORG_MEMBER=true
+        fi
+
+        HAS_LABEL=false
+        if echo "$PR_LABELS" | jq -e --arg label "$LABEL_NAME" 'index($label) != null' > /dev/null 2>&1; then
+          HAS_LABEL=true
+        fi
+
+        if [ "$HAS_LABEL" = "true" ]; then
+          if [ "$IS_ORG_MEMBER" = "true" ]; then
+            echo "::notice::Deploying: label '$LABEL_NAME' is present and author is $AUTHOR_ASSOCIATION"
+            echo "should-deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # External contributor: verify no commits were pushed after the label was added
+          LABEL_TIME=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/events" --paginate \
+            --jq "[.[] | select(.event == \"labeled\" and .label.name == \"${LABEL_NAME}\")] | last | .created_at")
+
+          HEAD_TIME=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}" \
+            --jq '.commit.committer.date')
+
+          if [[ "$HEAD_TIME" > "$LABEL_TIME" ]]; then
+            echo "::notice::Skipping: commit pushed after label was added — needs re-approval"
+            echo "should-deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::notice::Deploying: label '$LABEL_NAME' is present and no commits after labeling"
+          echo "should-deploy=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [ "$IS_ORG_MEMBER" = "false" ]; then
+          echo "::notice::Skipping: external contributor without '$LABEL_NAME' label"
+          echo "should-deploy=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        git fetch origin "$BASE_REF" --depth=1 2>/dev/null || true
+        IFS=',' read -ra PATHS <<< "$DOCS_PATHS"
+        for path in "${PATHS[@]}"; do
+          path=$(echo "$path" | xargs)
+          if git diff --name-only "origin/$BASE_REF"...HEAD -- "$path" | grep -q .; then
+            echo "::notice::Deploying: docs changed in '$path' and author is $AUTHOR_ASSOCIATION"
+            echo "should-deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+        done
+
+        echo "::notice::Skipping: no documentation changes detected"
+        echo "should-deploy=false" >> "$GITHUB_OUTPUT"
+
+    - name: Upload documentation artifact
+      if: steps.check.outputs.should-deploy == 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.dist-path }}
+        retention-days: ${{ inputs.retention-days }}
+        if-no-files-found: error
