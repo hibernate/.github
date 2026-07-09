@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Red Hat Inc. and Hibernate Authors
+
+name: 'Resolve CI Config'
+description: 'Read ci-reporting config and resolve feature flags and settings for a given repository and branch'
+
+inputs:
+  repository:
+    description: 'Full repository name (e.g. "hibernate/hibernate-orm")'
+    required: true
+  branch:
+    description: 'Branch name to resolve overrides for'
+    required: true
+
+outputs:
+  build-scans:
+    description: 'Whether build scan publishing is enabled'
+    value: ${{ steps.resolve.outputs.build-scans }}
+  sonar:
+    description: 'Whether Sonar analysis is enabled'
+    value: ${{ steps.resolve.outputs.sonar }}
+  docs-preview:
+    description: 'Whether docs preview deployment is enabled'
+    value: ${{ steps.resolve.outputs.docs-preview }}
+  build-system:
+    description: 'Build system (gradle or maven)'
+    value: ${{ steps.resolve.outputs.build-system }}
+  java-version:
+    description: 'Java version for setup-java'
+    value: ${{ steps.resolve.outputs.java-version }}
+  gradle-args:
+    description: 'Additional Gradle arguments'
+    value: ${{ steps.resolve.outputs.gradle-args }}
+  maven-args:
+    description: 'Additional Maven arguments'
+    value: ${{ steps.resolve.outputs.maven-args }}
+  sonar-java-libraries:
+    description: 'Path to Java libraries for Sonar analysis'
+    value: ${{ steps.resolve.outputs.sonar-java-libraries }}
+  sonar-coverage-report:
+    description: 'Path to JaCoCo coverage report for Sonar analysis'
+    value: ${{ steps.resolve.outputs.sonar-coverage-report }}
+  sonar-project-key:
+    description: 'Sonar project key (defaults to repo full name with / replaced by _)'
+    value: ${{ steps.resolve.outputs.sonar-project-key }}
+  build-scan-artifact-pattern:
+    description: 'Artifact name pattern for Develocity build scan data'
+    value: ${{ steps.resolve.outputs.build-scan-artifact-pattern }}
+  sonar-artifact-pattern:
+    description: 'Artifact name pattern for Sonar coverage data'
+    value: ${{ steps.resolve.outputs.sonar-artifact-pattern }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve config
+      id: resolve
+      shell: bash
+      env:
+        REPO: ${{ inputs.repository }}
+        BRANCH: ${{ inputs.branch }}
+        CONFIG_FILE: ${{ github.action_path }}/config.yml
+      run: |
+        emit_defaults() {
+          {
+            echo "build-scans=false"
+            echo "sonar=false"
+            echo "docs-preview=false"
+          } >> "$GITHUB_OUTPUT"
+        }
+
+        REPO_OWNER="${REPO%%/*}"
+        if [ "$REPO_OWNER" != "hibernate" ]; then
+          echo "::notice::Repository '$REPO' is not in the hibernate org, all features disabled"
+          emit_defaults
+          exit 0
+        fi
+
+        if [ "$(yq e '.[strenv(REPO)]' "$CONFIG_FILE")" = "null" ]; then
+          echo "::notice::Repository '$REPO' not found in config, all features disabled"
+          emit_defaults
+          exit 0
+        fi
+
+        # Merge all config layers once (branch > default > settings)
+        MERGED=$(yq e -o=json '
+          (.[strenv(REPO)].settings // {}) *
+          (.[strenv(REPO)].default // {}) *
+          (.[strenv(REPO)].branches[strenv(BRANCH)] // {})
+        ' "$CONFIG_FILE")
+
+        DERIVED_SONAR_KEY="${REPO//\//_}"
+
+        # Resolve all outputs with defaults in a single pass
+        RESOLVED=$(jq -r --arg sonar_key "$DERIVED_SONAR_KEY" '
+          {
+            "build-scans": (.["build-scans"] // "false"),
+            "sonar": (.sonar // "false"),
+            "docs-preview": (.["docs-preview"] // "false"),
+            "build-system": (.["build-system"] // "gradle"),
+            "java-version": (.["java-version"] // "25"),
+            "gradle-args": (.["gradle-args"] // ""),
+            "maven-args": (.["maven-args"] // ""),
+            "sonar-java-libraries": (.["sonar-java-libraries"] // ""),
+            "sonar-coverage-report": (.["sonar-coverage-report"] // ""),
+            "build-scan-artifact-pattern": (.["build-scan-artifact-pattern"] // "build-scan-data-*"),
+            "sonar-project-key": (.["sonar-project-key"] // $sonar_key),
+            "sonar-artifact-pattern": (.["sonar-artifact-pattern"] // "build-results-data")
+          } | to_entries[] | "\(.key)=\(.value)"
+        ' <<< "$MERGED")
+        echo "$RESOLVED" >> "$GITHUB_OUTPUT"
+
+        BUILD_SCANS=$(grep '^build-scans=' <<< "$RESOLVED" | cut -d= -f2)
+        SONAR=$(grep '^sonar=' <<< "$RESOLVED" | cut -d= -f2)
+        DOCS_PREVIEW=$(grep '^docs-preview=' <<< "$RESOLVED" | cut -d= -f2)
+        echo "::notice::Config for $REPO @ $BRANCH: build-scans=$BUILD_SCANS, sonar=$SONAR, docs-preview=$DOCS_PREVIEW"

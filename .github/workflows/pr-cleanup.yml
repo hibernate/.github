@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Red Hat Inc. and Hibernate Authors
+
+name: PR cleanup
+
+on:
+  workflow_call:
+
+defaults:
+  run:
+    shell: bash
+
+permissions: { }
+
+jobs:
+  setup:
+    name: Resolve configuration
+    runs-on: ubuntu-latest
+    outputs:
+      docs-preview: ${{ steps.config.outputs.docs-preview }}
+    steps:
+      - name: Resolve feature flags
+        id: config
+        uses: hibernate/.github/actions/resolve-ci-config@main
+        with:
+          repository: ${{ github.repository }}
+          branch: ${{ github.event.pull_request.base.ref }}
+
+  teardown-docs-preview:
+    name: Teardown docs preview
+    needs: setup
+    if: needs.setup.outputs.docs-preview == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Teardown docs preview
+        uses: hibernate/.github/actions/teardown-docs-preview@main
+        env:
+          SURGE_TOKEN: ${{ secrets.SURGE_PREVIEW_TOKEN }}
+        with:
+          pr-number: ${{ github.event.pull_request.number }}

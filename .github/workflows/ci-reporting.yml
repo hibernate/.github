@@ -1,0 +1,242 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Red Hat Inc. and Hibernate Authors
+
+name: CI reporting
+
+on:
+  workflow_call:
+
+defaults:
+  run:
+    shell: bash
+
+permissions: { }
+
+jobs:
+  setup:
+    name: Resolve configuration
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: read
+    outputs:
+      build-scans: ${{ steps.config.outputs.build-scans }}
+      sonar: ${{ steps.config.outputs.sonar }}
+      docs-preview: ${{ steps.config.outputs.docs-preview }}
+      build-system: ${{ steps.config.outputs.build-system }}
+      java-version: ${{ steps.config.outputs.java-version }}
+      gradle-args: ${{ steps.config.outputs.gradle-args }}
+      maven-args: ${{ steps.config.outputs.maven-args }}
+      sonar-java-libraries: ${{ steps.config.outputs.sonar-java-libraries }}
+      sonar-coverage-report: ${{ steps.config.outputs.sonar-coverage-report }}
+      sonar-project-key: ${{ steps.config.outputs.sonar-project-key }}
+      build-scan-artifact-pattern: ${{ steps.config.outputs.build-scan-artifact-pattern }}
+      sonar-artifact-pattern: ${{ steps.config.outputs.sonar-artifact-pattern }}
+      is-pull-request: ${{ steps.pr-info.outputs.is-pull-request }}
+      pr-number: ${{ steps.pr-info.outputs.pr-number }}
+      head-sha: ${{ steps.pr-info.outputs.head-sha }}
+      target-branch: ${{ steps.pr-info.outputs.target-branch }}
+      head-branch: ${{ steps.pr-info.outputs.head-branch }}
+    steps:
+      - name: Determine PR info
+        id: pr-info
+        uses: hibernate/.github/actions/determine-pr-info@main
+
+      - name: Resolve feature flags and settings
+        id: config
+        uses: hibernate/.github/actions/resolve-ci-config@main
+        with:
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          branch: ${{ steps.pr-info.outputs.target-branch }}
+
+  publish-build-scans:
+    name: Publish Develocity build scans
+    needs: setup
+    if: needs.setup.outputs.build-scans == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out target branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          ref: ${{ needs.setup.outputs.target-branch }}
+
+      - name: Set up Java
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.4.0
+        with:
+          distribution: 'temurin'
+          java-version: ${{ needs.setup.outputs.java-version }}
+
+      - name: Download build scan artifacts
+        id: download
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ${{ needs.setup.outputs.build-scan-artifact-pattern }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: /tmp/downloaded-build-scan-data/
+        continue-on-error: true
+
+      - name: Publish build scans (Gradle)
+        if: steps.download.outcome == 'success' && needs.setup.outputs.build-system == 'gradle'
+        env:
+          DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY_PR }}
+          COMMON_GRADLE_ARGS: ${{ needs.setup.outputs.gradle-args }}
+        run: |
+          shopt -s nullglob
+          read -ra gradle_args <<< "$COMMON_GRADLE_ARGS"
+          published=0
+          failed=0
+          mkdir -p ~/.gradle/
+          for build_scan_data_directory in /tmp/downloaded-build-scan-data/*
+          do
+            rm -rf ~/.gradle/build-scan-data
+            mv "$build_scan_data_directory" ~/.gradle/build-scan-data
+            if ./gradlew "${gradle_args[@]}" --no-build-cache buildScanPublishPrevious; then
+              published=$((published + 1))
+            else
+              echo "::warning::Failed to publish build scan from $(basename "$build_scan_data_directory")"
+              failed=$((failed + 1))
+            fi
+          done
+          echo "::notice::Published $published build scan(s), $failed failed"
+
+      - name: Publish build scans (Maven)
+        if: steps.download.outcome == 'success' && needs.setup.outputs.build-system == 'maven'
+        env:
+          DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY_PR }}
+          MAVEN_ARGS: ${{ needs.setup.outputs.maven-args }}
+        run: |
+          shopt -s nullglob
+          read -ra mvn_args <<< "$MAVEN_ARGS"
+          status=0
+          mkdir -p ~/.m2/.develocity/
+          for build_scan_data_directory in /tmp/downloaded-build-scan-data/*
+          do
+            rm -rf ~/.m2/.develocity/build-scan-data
+            mv "$build_scan_data_directory" ~/.m2/.develocity/build-scan-data \
+            && ./mvnw "${mvn_args[@]}" develocity:build-scan-publish-previous || status=1
+          done
+          exit "$status"
+
+  publish-sonar:
+    name: Publish Sonar scan
+    needs: setup
+    if: needs.setup.outputs.sonar == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out target branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          ref: ${{ needs.setup.outputs.target-branch }}
+          fetch-depth: 0
+
+      - name: Check out PR code
+        if: needs.setup.outputs.is-pull-request == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.setup.outputs.pr-number }}
+        run: |
+          gh pr checkout "$PR_NUMBER"
+          # Remove build wrappers so we don't accidentally run a build
+          rm -rf gradlew* mvnw*
+
+      - name: Remove build wrappers (push)
+        if: needs.setup.outputs.is-pull-request == 'false'
+        run: rm -rf gradlew* mvnw*
+
+      - name: Set up Java
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.4.0
+        with:
+          distribution: 'temurin'
+          java-version: ${{ needs.setup.outputs.java-version }}
+
+      - name: Download coverage reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ${{ needs.setup.outputs.sonar-artifact-pattern }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: .
+          merge-multiple: 'true'
+        continue-on-error: true
+
+      - name: Install Sonar CLI
+        run: |
+          SONAR_HASH="8fbfb1eb546b734a60fc3e537108f06e389a8ca124fbab3a16236a8a51edcc15"
+          SONAR_SCANNER_VERSION="8.0.1.6346"
+          curl --create-dirs --fail -sSLo "$HOME/.sonar/sonar-scanner.zip" \
+            "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-$SONAR_SCANNER_VERSION.zip"
+          DOWNLOADED_HASH=$(sha256sum "$HOME/.sonar/sonar-scanner.zip" | awk '{print $1}')
+          if [ "$DOWNLOADED_HASH" != "$SONAR_HASH" ]; then
+            echo "::error::Sonar scanner checksum mismatch. Expected: $SONAR_HASH, got: $DOWNLOADED_HASH"
+            exit 1
+          fi
+          unzip -o "$HOME/.sonar/sonar-scanner.zip" -d "$HOME/.sonar/"
+          mv "$HOME/.sonar/sonar-scanner-$SONAR_SCANNER_VERSION"/* "$HOME/.sonar/"
+
+      - name: Sonar Analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          REPO_FULL_NAME: ${{ github.event.workflow_run.repository.full_name }}
+          SONAR_PROJECT_KEY: ${{ needs.setup.outputs.sonar-project-key }}
+          IS_PULL_REQUEST: ${{ needs.setup.outputs.is-pull-request }}
+          HEAD_BRANCH: ${{ needs.setup.outputs.head-branch }}
+          PR_NUMBER: ${{ needs.setup.outputs.pr-number }}
+          TARGET_BRANCH: ${{ needs.setup.outputs.target-branch }}
+          SONAR_JAVA_LIBRARIES: ${{ needs.setup.outputs.sonar-java-libraries }}
+          SONAR_COVERAGE_REPORT: ${{ needs.setup.outputs.sonar-coverage-report }}
+        run: |
+          find . -name "*.exec" -type f
+
+          EXTRA_ARGS=()
+          if [ "$IS_PULL_REQUEST" = "true" ]; then
+            EXTRA_ARGS=(
+              "-Dsonar.pullrequest.branch=$HEAD_BRANCH"
+              "-Dsonar.pullrequest.key=$PR_NUMBER"
+              "-Dsonar.pullrequest.base=$TARGET_BRANCH"
+              "-Dsonar.pullrequest.provider=GitHub"
+              "-Dsonar.pullrequest.github.repository=$REPO_FULL_NAME"
+            )
+          else
+            EXTRA_ARGS=("-Dsonar.branch.name=$HEAD_BRANCH")
+          fi
+
+          "$HOME/.sonar/bin/sonar-scanner" "${EXTRA_ARGS[@]}" \
+            -Dsonar.host.url="https://sonarcloud.io" \
+            -Dsonar.organization="hibernate" \
+            -Dsonar.projectKey="$SONAR_PROJECT_KEY" \
+            -Dsonar.java.libraries="$(pwd)/$SONAR_JAVA_LIBRARIES" \
+            -Dsonar.coverage.jacoco.xmlReportPaths="$(pwd)/$SONAR_COVERAGE_REPORT"
+
+  deploy-docs-preview:
+    name: Deploy docs preview
+    needs: setup
+    if: needs.setup.outputs.docs-preview == 'true' && needs.setup.outputs.is-pull-request == 'true'
+    concurrency:
+      group: docs-preview-${{ github.event.workflow_run.repository.full_name }}-${{ needs.setup.outputs.pr-number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Deploy docs preview
+        uses: hibernate/.github/actions/deploy-docs-preview@main
+        env:
+          SURGE_TOKEN: ${{ secrets.SURGE_PREVIEW_TOKEN }}
+        with:
+          pr-number: ${{ needs.setup.outputs.pr-number }}
+          head-sha: ${{ needs.setup.outputs.head-sha }}

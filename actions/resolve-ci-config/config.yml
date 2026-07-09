@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Red Hat Inc. and Hibernate Authors
+#
+# Configuration for the ci-reporting and pr-cleanup reusable workflows.
+#
+# Structure per repository:
+#   default:      base feature flags (features not listed default to false)
+#   settings:     repo-level configuration (build system, java version, etc.)
+#   branches:     per-branch overrides of feature flags and settings
+#
+# Resolution order (first match wins):
+#   1. branches.<branch>.<key>  (per-branch override)
+#   2. default.<key>            (base feature flags)
+#   3. settings.<key>           (repo-level configuration)
+
+hibernate/hibernate-orm:
+  default:
+    build-scans: true
+    sonar: true
+    docs-preview: true
+  settings:
+    build-system: gradle
+    java-version: '25'
+    gradle-args: '-Igradle/init.gradle'
+    sonar-java-libraries: 'target/sonar-dependencies/*.jar'
+    sonar-coverage-report: 'reporting/target/reports/jacoco/mergeCodeCoverageReport/mergeCodeCoverageReport.xml'
+
+hibernate/hibernate-validator:
+  default:
+    build-scans: true
+    docs-preview: true
+  settings:
+    build-system: maven
+    java-version: '25'
+    maven-args: '-e -B --settings .github/mvn-settings.xml --no-transfer-progress'
+
+hibernate/hibernate-models:
+  default:
+    sonar: true
+    docs-preview: true
+  settings:
+    build-system: gradle
+    java-version: '25'
+    sonar-java-libraries: 'build/sonar-dependencies/*.jar'
+    sonar-coverage-report: 'reporting/build/reports/jacoco/mergeCodeCoverageReport/mergeCodeCoverageReport.xml'
