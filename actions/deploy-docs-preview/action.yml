@@ -5,14 +5,11 @@ name: 'Deploy Documentation Preview'
 description: 'Download documentation artifact, deploy to preview hosting, and post a PR comment'
 
 inputs:
-  repo-name:
-    description: 'Repository name (without owner) used in the preview domain (e.g. "hibernate-validator", "hibernate-search" ... )'
+  pr-number:
+    description: 'Pull request number'
     required: true
-  deploy-token:
-    description: 'Authentication token for the preview hosting provider'
-    required: true
-  github-token:
-    description: 'GitHub token for downloading artifacts and posting PR comments'
+  head-sha:
+    description: 'Short head SHA for the PR comment'
     required: true
   artifact-name:
     description: 'Name of the artifact to download'
@@ -28,106 +25,58 @@ runs:
       with:
         name: ${{ inputs.artifact-name }}
         path: ./docs-preview/
-        github-token: ${{ inputs.github-token }}
-        repository: ${{ github.event.workflow_run.repository.full_name }}
+        github-token: ${{ github.token }}
+        repository: ${{ github.event.repository.full_name }}
         run-id: ${{ github.event.workflow_run.id }}
       continue-on-error: true
-
-    - name: Determine PR number
-      if: steps.download.outcome == 'success'
-      id: pr-info
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github-token }}
-        HEAD_BRANCH_NAME: ${{ github.event.workflow_run.head_branch }}
-        FORK_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
-        REPO_OWNER: ${{ github.event.workflow_run.repository.owner.login }}
-        REPO_FULL_NAME: ${{ github.event.workflow_run.repository.full_name }}
-      run: |
-        BRANCH_NAME="$HEAD_BRANCH_NAME"
-        if [ "$FORK_OWNER" != "$REPO_OWNER" ]; then
-          BRANCH_NAME="$FORK_OWNER:$BRANCH_NAME"
-        fi
-
-        GH_RESPONSE=$(gh pr view "$BRANCH_NAME" --repo "$REPO_FULL_NAME" --json number,headRefOid)
-        PR_NUMBER=$(echo "$GH_RESPONSE" | jq -r '.number')
-        HEAD_SHA=$(echo "$GH_RESPONSE" | jq -r '.headRefOid')
-
-        if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
-          echo "::error::Could not determine PR number for branch: $BRANCH_NAME"
-          exit 1
-        fi
-
-        echo "pr-number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-        echo "head-sha=${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
-        echo "::notice::PR #$PR_NUMBER, head SHA: ${HEAD_SHA:0:7}"
 
     - name: Deploy to Surge
       if: steps.download.outcome == 'success'
       id: deploy
       shell: bash
       env:
-        SURGE_TOKEN: ${{ inputs.deploy-token }}
-        DEPLOY_DOMAIN: "${{ inputs.repo-name }}-pr-${{ steps.pr-info.outputs.pr-number }}-preview.surge.sh"
+        DEPLOY_DOMAIN: "${{ github.event.repository.name }}-pr-${{ inputs.pr-number }}-preview.surge.sh"
       run: |
-        npx surge@0.28.1 ./docs-preview/ "https://${DEPLOY_DOMAIN}"
+        npx --ignore-scripts surge@0.31.1 ./docs-preview/ "https://${DEPLOY_DOMAIN}"
         echo "url=https://$DEPLOY_DOMAIN" >> "$GITHUB_OUTPUT"
 
     - name: Post or update PR comment (success)
       if: steps.download.outcome == 'success' && steps.deploy.outcome == 'success'
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github-token }}
-        REPO_FULL_NAME: ${{ github.event.workflow_run.repository.full_name }}
-        PR_NUMBER: ${{ steps.pr-info.outputs.pr-number }}
-        HEAD_SHA: ${{ steps.pr-info.outputs.head-sha }}
-        DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-      run: |
-        MARKER="<!-- docs-preview -->"
-        BODY="${MARKER}
-        ### Documentation Preview
+      uses: hibernate/.github/actions/upsert-pr-comment@main
+      with:
+        marker: '<!-- docs-preview -->'
+        pr-number: ${{ inputs.pr-number }}
+        content: |-
+          ### Documentation Preview
 
-        Preview deployed for commit ${HEAD_SHA}:
-        ${DEPLOY_URL}
+          Preview deployed for commit ${{ inputs.head-sha }}:
+          ${{ steps.deploy.outputs.url }}
 
-        _This preview will be removed when the PR is closed._"
+          _This preview will be removed when the PR is closed._
 
-        COMMENT_ID=$(gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments" --paginate \
-          --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" 2>/dev/null | head -1 || true)
+    - name: Post or update PR comment (artifact not found)
+      if: steps.download.outcome == 'failure'
+      uses: hibernate/.github/actions/upsert-pr-comment@main
+      with:
+        marker: '<!-- docs-preview -->'
+        pr-number: ${{ inputs.pr-number }}
+        content: |-
+          ### Documentation Preview
 
-        if [ -n "$COMMENT_ID" ]; then
-          gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments/${COMMENT_ID}" \
-            -X PATCH -f body="$BODY"
-          echo "::notice::Updated existing preview comment"
-        else
-          gh pr comment "$PR_NUMBER" --repo "$REPO_FULL_NAME" --body "$BODY"
-          echo "::notice::Created new preview comment"
-        fi
+          Documentation preview artifact not found for commit ${{ inputs.head-sha }}.
+          The documentation may not have changed, or the artifact may have expired.
+
+          [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
 
     - name: Post or update PR comment (failure)
       if: steps.download.outcome == 'success' && steps.deploy.outcome == 'failure'
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github-token }}
-        REPO_FULL_NAME: ${{ github.event.workflow_run.repository.full_name }}
-        PR_NUMBER: ${{ steps.pr-info.outputs.pr-number }}
-        HEAD_SHA: ${{ steps.pr-info.outputs.head-sha }}
-        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      run: |
-        MARKER="<!-- docs-preview -->"
-        BODY="${MARKER}
-        ### Documentation Preview
+      uses: hibernate/.github/actions/upsert-pr-comment@main
+      with:
+        marker: '<!-- docs-preview -->'
+        pr-number: ${{ inputs.pr-number }}
+        content: |-
+          ### Documentation Preview
 
-        Preview deployment failed for commit ${HEAD_SHA}.
+          Preview deployment failed for commit ${{ inputs.head-sha }}.
 
-        [View workflow run](${RUN_URL}) for details."
-
-        COMMENT_ID=$(gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments" --paginate \
-          --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" 2>/dev/null | head -1 || true)
-
-        if [ -n "$COMMENT_ID" ]; then
-          gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments/${COMMENT_ID}" \
-            -X PATCH -f body="$BODY"
-        else
-          gh pr comment "$PR_NUMBER" --repo "$REPO_FULL_NAME" --body "$BODY"
-        fi
+          [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.

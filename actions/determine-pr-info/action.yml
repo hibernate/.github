@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Red Hat Inc. and Hibernate Authors
+
+name: 'Determine PR Info'
+description: 'Resolve PR number, branch info, and head SHA from a workflow_run context, handling forks correctly'
+
+inputs: { }
+
+outputs:
+  is-pull-request:
+    description: 'Whether the triggering event was a pull request'
+    value: ${{ steps.resolve.outputs.is-pull-request }}
+  pr-number:
+    description: 'The pull request number (empty if not a PR)'
+    value: ${{ steps.resolve.outputs.pr-number }}
+  head-sha:
+    description: 'Short (7-char) head commit SHA'
+    value: ${{ steps.resolve.outputs.head-sha }}
+  target-branch:
+    description: 'The PR target branch, or the pushed branch for push events'
+    value: ${{ steps.resolve.outputs.target-branch }}
+  head-branch:
+    description: 'The full head branch reference (fork-qualified if applicable)'
+    value: ${{ steps.resolve.outputs.head-branch }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve PR and branch info
+      id: resolve
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        EVENT_TYPE: ${{ github.event.workflow_run.event }}
+        FORK_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+        REPO_OWNER: ${{ github.event.workflow_run.repository.owner.login }}
+        REPO_FULL_NAME: ${{ github.event.workflow_run.repository.full_name }}
+        HEAD_BRANCH_NAME: ${{ github.event.workflow_run.head_branch }}
+        HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      run: |
+        BRANCH_NAME="$HEAD_BRANCH_NAME"
+
+        if [ "$EVENT_TYPE" != "pull_request" ]; then
+          echo "::notice::Push event, using head branch: $BRANCH_NAME"
+          {
+            echo "is-pull-request=false"
+            echo "pr-number="
+            echo "head-sha=${HEAD_SHA:0:7}"
+            echo "target-branch=$BRANCH_NAME"
+            echo "head-branch=$BRANCH_NAME"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [ "$FORK_OWNER" != "$REPO_OWNER" ]; then
+          BRANCH_NAME="$FORK_OWNER:$BRANCH_NAME"
+        fi
+
+        # TODO: gh pr view matches by branch name; if multiple PRs share a branch, this may pick the wrong one
+        GH_RESPONSE=$(gh pr view "$BRANCH_NAME" --repo "$REPO_FULL_NAME" --json number,baseRefName,headRefOid)
+        PR_NUMBER=$(echo "$GH_RESPONSE" | jq -r '.number')
+        TARGET_BRANCH=$(echo "$GH_RESPONSE" | jq -r '.baseRefName')
+        PR_HEAD_SHA=$(echo "$GH_RESPONSE" | jq -r '.headRefOid')
+
+        if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+          echo "::error::Could not determine PR number for branch: $BRANCH_NAME"
+          exit 1
+        fi
+
+        echo "::notice::PR #$PR_NUMBER, target: $TARGET_BRANCH, head: ${PR_HEAD_SHA:0:7}"
+        {
+          echo "is-pull-request=true"
+          echo "pr-number=$PR_NUMBER"
+          echo "head-sha=${PR_HEAD_SHA:0:7}"
+          echo "target-branch=$TARGET_BRANCH"
+          echo "head-branch=$BRANCH_NAME"
+        } >> "$GITHUB_OUTPUT"

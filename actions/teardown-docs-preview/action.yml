@@ -5,14 +5,8 @@ name: 'Teardown Documentation Preview'
 description: 'Remove the preview deployment and update the PR comment to indicate the preview is no longer available'
 
 inputs:
-  repo-name:
-    description: 'Repository name (without owner) used in the preview domain (e.g. "hibernate-validator", "hibernate-search" ... )''
-    required: true
-  deploy-token:
-    description: 'Authentication token for the preview hosting provider'
-    required: true
-  github-token:
-    description: 'GitHub token for updating PR comments'
+  pr-number:
+    description: 'Pull request number'
     required: true
 
 runs:
@@ -21,36 +15,19 @@ runs:
     - name: Teardown Surge preview
       shell: bash
       env:
-        SURGE_TOKEN: ${{ inputs.deploy-token }}
-        DEPLOY_DOMAIN: "${{ inputs.repo-name }}-pr-${{ github.event.pull_request.number }}-preview.surge.sh"
+        DEPLOY_DOMAIN: "${{ github.event.repository.name }}-pr-${{ inputs.pr-number }}-preview.surge.sh"
       run: |
-        npx surge@0.28.1 teardown "https://${DEPLOY_DOMAIN}"
+        npx --ignore-scripts surge@0.31.1 teardown "https://${DEPLOY_DOMAIN}"
       continue-on-error: true
 
     - name: Update PR comment to indicate preview is removed
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github-token }}
-        REPO_FULL_NAME: ${{ github.repository }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
-        DEPLOY_DOMAIN: "${{ inputs.repo-name }}-pr-${{ github.event.pull_request.number }}-preview.surge.sh"
-      run: |
-        MARKER="<!-- docs-preview -->"
+      uses: hibernate/.github/actions/upsert-pr-comment@main
+      with:
+        marker: '<!-- docs-preview -->'
+        pr-number: ${{ inputs.pr-number }}
+        update-only: 'true'
+        content: |-
+          ### Documentation Preview
 
-        COMMENT_ID=$(gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments" --paginate \
-          --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" 2>/dev/null | head -1 || true)
-
-        if [ -z "$COMMENT_ID" ]; then
-          echo "::notice::No preview comment found, nothing to update"
-          exit 0
-        fi
-
-        BODY="${MARKER}
-        ### Documentation Preview
-
-        _This preview has been removed following the closure of this PR._"
-
-        gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments/${COMMENT_ID}" \
-          -X PATCH -f body="$BODY"
-        echo "::notice::Updated preview comment to indicate removal"
+          _This preview has been removed following the closure of this PR._
       continue-on-error: true

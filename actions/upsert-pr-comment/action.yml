@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Red Hat Inc. and Hibernate Authors
+
+name: 'Upsert PR Comment'
+description: 'Create or update a PR comment identified by a hidden HTML marker'
+
+inputs:
+  marker:
+    description: 'HTML comment used to identify the comment (e.g. "<!-- docs-preview -->")'
+    required: true
+  content:
+    description: 'Markdown body to post (the marker is prepended automatically)'
+    required: true
+  pr-number:
+    description: 'Pull request number'
+    required: true
+  update-only:
+    description: 'If true, only update an existing comment; skip silently if none found'
+    required: false
+    default: 'false'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Upsert PR comment
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        MARKER: ${{ inputs.marker }}
+        CONTENT: ${{ inputs.content }}
+        REPO_FULL_NAME: ${{ github.event.repository.full_name }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        UPDATE_ONLY: ${{ inputs.update-only }}
+      run: |
+        BODY=$(printf '%s\n%s' "$MARKER" "$CONTENT")
+        BOT_USER=$(gh api user --jq '.login')
+
+        COMMENT_ID=$(gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments" --paginate \
+          --jq --arg bot "$BOT_USER" --arg marker "$MARKER" \
+          '.[] | select(.user.login == $bot and (.body | startswith($marker))) | .id' | head -1 || true)
+
+        if [ -n "$COMMENT_ID" ]; then
+          gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments/${COMMENT_ID}" \
+            -X PATCH -f body="$BODY"
+          echo "::notice::Updated existing comment (marker: ${MARKER})"
+        elif [ "$UPDATE_ONLY" = "true" ]; then
+          echo "::notice::No matching comment found, skipping (update-only mode)"
+        else
+          gh pr comment "$PR_NUMBER" --repo "$REPO_FULL_NAME" --body "$BODY"
+          echo "::notice::Created new comment (marker: ${MARKER})"
+        fi
