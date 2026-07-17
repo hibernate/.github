@@ -28,11 +28,14 @@ hibernate/hibernate-orm:
 hibernate/hibernate-validator:
   default:
     build-scans: true
+    sonar: true
     docs-preview: true
   settings:
     build-system: maven
     java-version: '25'
     maven-args: '-e -B --settings .github/mvn-settings.xml --no-transfer-progress'
+    sonar-java-libraries: 'build/reports/target/sonar-dependencies/*.jar'
+    sonar-coverage-report: 'build/reports/target/site/jacoco-aggregate/jacoco.xml'
 
 hibernate/hibernate-models:
   default:
