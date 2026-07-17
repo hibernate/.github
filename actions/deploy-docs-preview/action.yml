@@ -40,6 +40,36 @@ runs:
         npx --ignore-scripts surge@0.31.1 ./docs-preview/ "https://${DEPLOY_DOMAIN}"
         echo "url=https://$DEPLOY_DOMAIN" >> "$GITHUB_OUTPUT"
 
+    - name: Build doc index links
+      if: steps.download.outcome == 'success' && steps.deploy.outcome == 'success'
+      id: links
+      shell: bash
+      env:
+        DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+      run: |
+        LINKS=""
+        while IFS= read -r file; do
+          [ -z "$file" ] && continue
+          rel_path="${file#./docs-preview/}"
+          dir_path=$(dirname "$rel_path")
+          if [ "$dir_path" = "." ]; then
+            label="Home"
+          else
+            label=$(echo "$dir_path" | sed 's/[-_]/ /g; s|/| / |g; s/\b\w/\U&/g')
+          fi
+          LINKS="${LINKS}- [${label}](${DEPLOY_URL}/${rel_path})"$'\n'
+        done < <(find ./docs-preview -name 'index.html' -type f | sort)
+
+        if [ -z "$LINKS" ]; then
+          LINKS="${DEPLOY_URL}"$'\n'
+        fi
+
+        {
+          echo "doc-links<<EOF"
+          printf '%s' "$LINKS"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
     - name: Post or update PR comment (success)
       if: steps.download.outcome == 'success' && steps.deploy.outcome == 'success'
       uses: hibernate/.github/actions/upsert-pr-comment@main
@@ -50,8 +80,8 @@ runs:
           ### Documentation Preview
 
           Preview deployed for commit ${{ inputs.head-sha }}:
-          ${{ steps.deploy.outputs.url }}
 
+          ${{ steps.links.outputs.doc-links }}
           _This preview will be removed when the PR is closed._
 
     - name: Post or update PR comment (artifact not found)
