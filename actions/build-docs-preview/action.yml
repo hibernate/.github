@@ -36,12 +36,13 @@ runs:
       id: check
       shell: bash
       env:
+        GH_TOKEN: ${{ github.token }}
         EVENT_NAME: ${{ github.event_name }}
         AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
-        PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         LABEL_NAME: ${{ inputs.label }}
         SRC_PATHS: ${{ inputs.src-paths }}
         BASE_REF: ${{ github.event.pull_request.base.ref }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         if [ "$EVENT_NAME" != "pull_request" ]; then
           echo "::notice::Not a pull_request event ($EVENT_NAME), skipping docs preview"
@@ -55,7 +56,7 @@ runs:
         fi
 
         HAS_LABEL=false
-        if echo "$PR_LABELS" | jq -e --arg label "$LABEL_NAME" 'index($label) != null' > /dev/null 2>&1; then
+        if gh pr view "$PR_NUMBER" --json labels --jq ".labels[].name" | grep -qx "$LABEL_NAME"; then
           HAS_LABEL=true
         fi
 
