@@ -75,7 +75,7 @@ runs:
         while IFS= read -r path; do
           path=$(echo "$path" | xargs)
           [ -z "$path" ] && continue
-          if git diff --name-only "origin/$BASE_REF"...HEAD -- "$path" | grep -q .; then
+          if git diff --name-only "origin/$BASE_REF" HEAD -- "$path" | grep -q .; then
             echo "::notice::Deploying: docs changed in '$path' and author is $AUTHOR_ASSOCIATION"
             echo "should-deploy=true" >> "$GITHUB_OUTPUT"
             exit 0
