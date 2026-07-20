@@ -233,10 +233,95 @@ jobs:
       actions: read
       pull-requests: write
     steps:
-      - name: Deploy docs preview
-        uses: hibernate/.github/actions/deploy-docs-preview@f95c7959b0b60c30a8c006cf506f25141d759575
+      - name: Download documentation artifact
+        id: download
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: docs-preview
+          path: ./docs-preview/
+          github-token: ${{ github.token }}
+          repository: ${{ github.event.repository.full_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true
+
+      - name: Deploy to Surge
+        if: steps.download.outcome == 'success'
+        id: deploy
+        shell: bash
         env:
           SURGE_TOKEN: ${{ secrets.SURGE_PREVIEW_TOKEN }}
+          DEPLOY_DOMAIN: "${{ github.event.repository.name }}-pr-${{ needs.setup.outputs.pr-number }}-preview.surge.sh"
+        run: |
+          npx --ignore-scripts surge@0.31.1 ./docs-preview/ "https://${DEPLOY_DOMAIN}"
+          echo "url=https://$DEPLOY_DOMAIN" >> "$GITHUB_OUTPUT"
+
+      - name: Build doc index links
+        if: steps.download.outcome == 'success' && steps.deploy.outcome == 'success'
+        id: links
+        shell: bash
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          LINKS=""
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            rel_path="${file#./docs-preview/}"
+            dir_path=$(dirname "$rel_path")
+            if [ "$dir_path" = "." ]; then
+              label="Home"
+            else
+              label=$(echo "$dir_path" | sed 's/[-_]/ /g; s|/| / |g; s/\b\w/\U&/g')
+            fi
+            LINKS="${LINKS}- [${label}](${DEPLOY_URL}/${rel_path})"$'\n'
+          done < <(find ./docs-preview -name 'index.html' -type f | sort)
+
+          if [ -z "$LINKS" ]; then
+            LINKS="${DEPLOY_URL}"$'\n'
+          fi
+
+          {
+            echo "doc-links<<EOF"
+            printf '%s' "$LINKS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post or update PR comment (success)
+        if: steps.download.outcome == 'success' && steps.deploy.outcome == 'success'
+        uses: hibernate/.github/actions/upsert-pr-comment@77302e2cc1b1c346d68c309c7565dff399772db4
         with:
+          marker: '<!-- docs-preview -->'
           pr-number: ${{ needs.setup.outputs.pr-number }}
-          head-sha: ${{ needs.setup.outputs.head-sha }}
+          content: |-
+            ### Documentation Preview
+
+            Preview deployed for commit ${{ needs.setup.outputs.head-sha }}:
+
+            ${{ steps.links.outputs.doc-links }}
+            _This preview will be removed when the PR is closed._
+
+      - name: Post or update PR comment (artifact not found)
+        if: steps.download.outcome == 'failure'
+        uses: hibernate/.github/actions/upsert-pr-comment@77302e2cc1b1c346d68c309c7565dff399772db4
+        with:
+          marker: '<!-- docs-preview -->'
+          pr-number: ${{ needs.setup.outputs.pr-number }}
+          content: |-
+            ### Documentation Preview
+
+            Documentation preview artifact not found for commit ${{ needs.setup.outputs.head-sha }}.
+            The documentation may not have changed, or the artifact may have expired.
+
+            [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+
+      - name: Post or update PR comment (failure)
+        if: steps.download.outcome == 'success' && steps.deploy.outcome == 'failure'
+        uses: hibernate/.github/actions/upsert-pr-comment@77302e2cc1b1c346d68c309c7565dff399772db4
+        with:
+          marker: '<!-- docs-preview -->'
+          pr-number: ${{ needs.setup.outputs.pr-number }}
+          content: |-
+            ### Documentation Preview
+
+            Preview deployment failed for commit ${{ needs.setup.outputs.head-sha }}.
+
+            [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
