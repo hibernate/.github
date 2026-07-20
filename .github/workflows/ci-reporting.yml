@@ -32,6 +32,7 @@ jobs:
       sonar-project-key: ${{ steps.config.outputs.sonar-project-key }}
       build-scan-artifact-pattern: ${{ steps.config.outputs.build-scan-artifact-pattern }}
       sonar-artifact-pattern: ${{ steps.config.outputs.sonar-artifact-pattern }}
+      docs-preview-links: ${{ steps.config.outputs.docs-preview-links }}
       is-pull-request: ${{ steps.pr-info.outputs.is-pull-request }}
       pr-number: ${{ steps.pr-info.outputs.pr-number }}
       head-sha: ${{ steps.pr-info.outputs.head-sha }}
@@ -261,7 +262,13 @@ jobs:
         shell: bash
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          SHOW_LINKS: ${{ needs.setup.outputs.docs-preview-links }}
         run: |
+          if [ "$SHOW_LINKS" != "true" ]; then
+            printf 'doc-links=[Home](%s)\n' "$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           LINKS=""
           while IFS= read -r file; do
             [ -z "$file" ] && continue

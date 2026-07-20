@@ -49,6 +49,9 @@ outputs:
   sonar-artifact-pattern:
     description: 'Artifact name pattern for Sonar coverage data'
     value: ${{ steps.resolve.outputs.sonar-artifact-pattern }}
+  docs-preview-links:
+    description: 'Whether to list individual doc section links in the preview comment'
+    value: ${{ steps.resolve.outputs.docs-preview-links }}
 
 runs:
   using: "composite"
@@ -105,7 +108,8 @@ runs:
             "sonar-coverage-report": (.["sonar-coverage-report"] // ""),
             "build-scan-artifact-pattern": (.["build-scan-artifact-pattern"] // "build-scan-data-*"),
             "sonar-project-key": (.["sonar-project-key"] // $sonar_key),
-            "sonar-artifact-pattern": (.["sonar-artifact-pattern"] // "build-results-data")
+            "sonar-artifact-pattern": (.["sonar-artifact-pattern"] // "build-results-data"),
+            "docs-preview-links": (.["docs-preview-links"] // "true")
           } | to_entries[] | "\(.key)=\(.value)"
         ' <<< "$MERGED")
         echo "$RESOLVED" >> "$GITHUB_OUTPUT"

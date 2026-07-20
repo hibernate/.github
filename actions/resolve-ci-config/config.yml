@@ -50,3 +50,5 @@ hibernate/hibernate-models:
 hibernate/hibernate.org:
   default:
     docs-preview: true
+  settings:
+    docs-preview-links: false
