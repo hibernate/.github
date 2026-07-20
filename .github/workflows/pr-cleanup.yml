@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Resolve feature flags
         id: config
-        uses: hibernate/.github/actions/resolve-ci-config@main
+        uses: ./actions/resolve-ci-config
         with:
           repository: ${{ github.repository }}
           branch: ${{ github.event.pull_request.base.ref }}
@@ -35,7 +35,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Teardown docs preview
-        uses: hibernate/.github/actions/teardown-docs-preview@main
+        uses: ./actions/teardown-docs-preview
         env:
           SURGE_TOKEN: ${{ secrets.SURGE_PREVIEW_TOKEN }}
         with:
