@@ -34,9 +34,23 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - name: Teardown docs preview
-        uses: hibernate/.github/actions/teardown-docs-preview@f95c7959b0b60c30a8c006cf506f25141d759575
+      - name: Teardown Surge preview
+        shell: bash
         env:
           SURGE_TOKEN: ${{ secrets.SURGE_PREVIEW_TOKEN }}
+          DEPLOY_DOMAIN: "${{ github.event.repository.name }}-pr-${{ github.event.pull_request.number }}-preview.surge.sh"
+        run: |
+          npx --ignore-scripts surge@0.31.1 teardown "https://${DEPLOY_DOMAIN}"
+        continue-on-error: true
+
+      - name: Update PR comment to indicate preview is removed
+        uses: hibernate/.github/actions/upsert-pr-comment@77302e2cc1b1c346d68c309c7565dff399772db4
         with:
+          marker: '<!-- docs-preview -->'
           pr-number: ${{ github.event.pull_request.number }}
+          update-only: 'true'
+          content: |-
+            ### Documentation Preview
+
+            _This preview has been removed following the closure of this PR._
+        continue-on-error: true
