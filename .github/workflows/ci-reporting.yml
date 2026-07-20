@@ -270,7 +270,8 @@ jobs:
             if [ "$dir_path" = "." ]; then
               label="Home"
             else
-              label=$(echo "$dir_path" | sed 's/[-_]/ /g; s|/| / |g; s/\b\w/\U&/g')
+              top_dir="${dir_path%%/*}"
+              label=$(echo "$top_dir" | sed 's/[-_]/ /g; s/\b\w/\U&/g')
             fi
             LINKS="${LINKS}- [${label}](${DEPLOY_URL}/${rel_path})"$'\n'
           done < <(find ./docs-preview -name 'index.html' -type f | sort)
