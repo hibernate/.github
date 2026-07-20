@@ -21,7 +21,7 @@ runs:
       continue-on-error: true
 
     - name: Update PR comment to indicate preview is removed
-      uses: hibernate/.github/actions/upsert-pr-comment@main
+      uses: ./actions/upsert-pr-comment
       with:
         marker: '<!-- docs-preview -->'
         pr-number: ${{ inputs.pr-number }}
