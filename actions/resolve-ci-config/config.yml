@@ -46,3 +46,7 @@ hibernate/hibernate-models:
     java-version: '25'
     sonar-java-libraries: 'build/sonar-dependencies/*.jar'
     sonar-coverage-report: 'reporting/build/reports/jacoco/mergeCodeCoverageReport/mergeCodeCoverageReport.xml'
+
+hibernate/hibernate.org:
+  default:
+    docs-preview: true
