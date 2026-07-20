@@ -288,7 +288,7 @@ jobs:
 
       - name: Post or update PR comment (success)
         if: steps.download.outcome == 'success' && steps.deploy.outcome == 'success'
-        uses: hibernate/.github/actions/upsert-pr-comment@77302e2cc1b1c346d68c309c7565dff399772db4
+        uses: hibernate/.github/actions/upsert-pr-comment@21360023b8e126959c5074584fc5accb42c4c6b7
         with:
           marker: '<!-- docs-preview -->'
           pr-number: ${{ needs.setup.outputs.pr-number }}
@@ -302,7 +302,7 @@ jobs:
 
       - name: Post or update PR comment (artifact not found)
         if: steps.download.outcome == 'failure'
-        uses: hibernate/.github/actions/upsert-pr-comment@77302e2cc1b1c346d68c309c7565dff399772db4
+        uses: hibernate/.github/actions/upsert-pr-comment@21360023b8e126959c5074584fc5accb42c4c6b7
         with:
           marker: '<!-- docs-preview -->'
           pr-number: ${{ needs.setup.outputs.pr-number }}
@@ -316,7 +316,7 @@ jobs:
 
       - name: Post or update PR comment (failure)
         if: steps.download.outcome == 'success' && steps.deploy.outcome == 'failure'
-        uses: hibernate/.github/actions/upsert-pr-comment@77302e2cc1b1c346d68c309c7565dff399772db4
+        uses: hibernate/.github/actions/upsert-pr-comment@21360023b8e126959c5074584fc5accb42c4c6b7
         with:
           marker: '<!-- docs-preview -->'
           pr-number: ${{ needs.setup.outputs.pr-number }}
