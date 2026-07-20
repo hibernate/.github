@@ -44,7 +44,7 @@ jobs:
         continue-on-error: true
 
       - name: Update PR comment to indicate preview is removed
-        uses: hibernate/.github/actions/upsert-pr-comment@77302e2cc1b1c346d68c309c7565dff399772db4
+        uses: hibernate/.github/actions/upsert-pr-comment@21360023b8e126959c5074584fc5accb42c4c6b7
         with:
           marker: '<!-- docs-preview -->'
           pr-number: ${{ github.event.pull_request.number }}
