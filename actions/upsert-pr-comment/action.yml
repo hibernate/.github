@@ -34,9 +34,9 @@ runs:
       run: |
         BODY=$(printf '%s\n%s' "$MARKER" "$CONTENT")
 
+        ESCAPED_MARKER=$(echo "$MARKER" | sed 's/["\]/\\&/g')
         COMMENT_ID=$(gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments" --paginate \
-          --jq --arg marker "$MARKER" \
-          '.[] | select(.body | startswith($marker)) | .id' | head -1 || true)
+          --jq ".[] | select(.body | startswith(\"${ESCAPED_MARKER}\")) | .id" | head -1 || true)
 
         if [ -n "$COMMENT_ID" ]; then
           gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments/${COMMENT_ID}" \
