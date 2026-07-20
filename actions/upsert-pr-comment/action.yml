@@ -33,11 +33,10 @@ runs:
         UPDATE_ONLY: ${{ inputs.update-only }}
       run: |
         BODY=$(printf '%s\n%s' "$MARKER" "$CONTENT")
-        BOT_USER=$(gh api user --jq '.login')
 
         COMMENT_ID=$(gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments" --paginate \
-          --jq --arg bot "$BOT_USER" --arg marker "$MARKER" \
-          '.[] | select(.user.login == $bot and (.body | startswith($marker))) | .id' | head -1 || true)
+          --jq --arg marker "$MARKER" \
+          '.[] | select(.body | startswith($marker)) | .id' | head -1 || true)
 
         if [ -n "$COMMENT_ID" ]; then
           gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments/${COMMENT_ID}" \
