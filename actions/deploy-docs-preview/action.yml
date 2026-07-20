@@ -72,7 +72,7 @@ runs:
 
     - name: Post or update PR comment (success)
       if: steps.download.outcome == 'success' && steps.deploy.outcome == 'success'
-      uses: ./actions/upsert-pr-comment
+      uses: hibernate/.github/actions/upsert-pr-comment@f95c7959b0b60c30a8c006cf506f25141d759575
       with:
         marker: '<!-- docs-preview -->'
         pr-number: ${{ inputs.pr-number }}
@@ -86,7 +86,7 @@ runs:
 
     - name: Post or update PR comment (artifact not found)
       if: steps.download.outcome == 'failure'
-      uses: ./actions/upsert-pr-comment
+      uses: hibernate/.github/actions/upsert-pr-comment@f95c7959b0b60c30a8c006cf506f25141d759575
       with:
         marker: '<!-- docs-preview -->'
         pr-number: ${{ inputs.pr-number }}
@@ -100,7 +100,7 @@ runs:
 
     - name: Post or update PR comment (failure)
       if: steps.download.outcome == 'success' && steps.deploy.outcome == 'failure'
-      uses: ./actions/upsert-pr-comment
+      uses: hibernate/.github/actions/upsert-pr-comment@f95c7959b0b60c30a8c006cf506f25141d759575
       with:
         marker: '<!-- docs-preview -->'
         pr-number: ${{ inputs.pr-number }}

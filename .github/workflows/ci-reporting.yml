@@ -40,11 +40,11 @@ jobs:
     steps:
       - name: Determine PR info
         id: pr-info
-        uses: ./actions/determine-pr-info
+        uses: hibernate/.github/actions/determine-pr-info@f95c7959b0b60c30a8c006cf506f25141d759575
 
       - name: Resolve feature flags and settings
         id: config
-        uses: ./actions/resolve-ci-config
+        uses: hibernate/.github/actions/resolve-ci-config@f95c7959b0b60c30a8c006cf506f25141d759575
         with:
           repository: ${{ github.event.workflow_run.repository.full_name }}
           branch: ${{ steps.pr-info.outputs.target-branch }}
@@ -234,7 +234,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Deploy docs preview
-        uses: ./actions/deploy-docs-preview
+        uses: hibernate/.github/actions/deploy-docs-preview@f95c7959b0b60c30a8c006cf506f25141d759575
         env:
           SURGE_TOKEN: ${{ secrets.SURGE_PREVIEW_TOKEN }}
         with:
