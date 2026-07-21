@@ -94,12 +94,16 @@ runs:
 
         DERIVED_SONAR_KEY="${REPO//\//_}"
 
-        # Resolve all outputs with defaults in a single pass
+        # Resolve all outputs with defaults in a single pass.
+        # Boolean fields use a bool(default) helper instead of jq's // operator
+        # because // treats false as falsy: false // "true" == "true"
         RESOLVED=$(jq -r --arg sonar_key "$DERIVED_SONAR_KEY" '
+          def bool(default): if . == null then default else . end;
           {
-            "build-scans": (.["build-scans"] // "false"),
-            "sonar": (.sonar // "false"),
-            "docs-preview": (.["docs-preview"] // "false"),
+            "build-scans": (.["build-scans"] | bool("false")),
+            "sonar": (.sonar | bool("false")),
+            "docs-preview": (.["docs-preview"] | bool("false")),
+            "docs-preview-links": (.["docs-preview-links"] | bool("true")),
             "build-system": (.["build-system"] // "gradle"),
             "java-version": (.["java-version"] // "25"),
             "gradle-args": (.["gradle-args"] // ""),
@@ -108,8 +112,7 @@ runs:
             "sonar-coverage-report": (.["sonar-coverage-report"] // ""),
             "build-scan-artifact-pattern": (.["build-scan-artifact-pattern"] // "build-scan-data-*"),
             "sonar-project-key": (.["sonar-project-key"] // $sonar_key),
-            "sonar-artifact-pattern": (.["sonar-artifact-pattern"] // "build-results-data"),
-            "docs-preview-links": (.["docs-preview-links"] // "true")
+            "sonar-artifact-pattern": (.["sonar-artifact-pattern"] // "build-results-data")
           } | to_entries[] | "\(.key)=\(.value)"
         ' <<< "$MERGED")
         echo "$RESOLVED" >> "$GITHUB_OUTPUT"
