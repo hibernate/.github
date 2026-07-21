@@ -74,3 +74,9 @@ hibernate/hibernate.org:
     docs-preview: true
   settings:
     docs-preview-links: false
+
+hibernate/in.relation.to:
+  default:
+    docs-preview: true
+  settings:
+    docs-preview-links: false
