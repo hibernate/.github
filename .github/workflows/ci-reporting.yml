@@ -41,11 +41,11 @@ jobs:
     steps:
       - name: Determine PR info
         id: pr-info
-        uses: hibernate/.github/actions/determine-pr-info@ca2763f1abf58b9db9dbb0d289a49b54cef4aee4
+        uses: hibernate/.github/actions/determine-pr-info@4ee8af451af6a8e9fa87771d6c444559c8ef0cc4
 
       - name: Resolve feature flags and settings
         id: config
-        uses: hibernate/.github/actions/resolve-ci-config@ca2763f1abf58b9db9dbb0d289a49b54cef4aee4
+        uses: hibernate/.github/actions/resolve-ci-config@4ee8af451af6a8e9fa87771d6c444559c8ef0cc4
         with:
           repository: ${{ github.event.workflow_run.repository.full_name }}
           branch: ${{ steps.pr-info.outputs.target-branch }}
@@ -295,7 +295,7 @@ jobs:
 
       - name: Post or update PR comment (success)
         if: steps.download.outcome == 'success' && steps.deploy.outcome == 'success'
-        uses: hibernate/.github/actions/upsert-pr-comment@ca2763f1abf58b9db9dbb0d289a49b54cef4aee4
+        uses: hibernate/.github/actions/upsert-pr-comment@4ee8af451af6a8e9fa87771d6c444559c8ef0cc4
         with:
           marker: '<!-- docs-preview -->'
           pr-number: ${{ needs.setup.outputs.pr-number }}
@@ -309,7 +309,7 @@ jobs:
 
       - name: Post or update PR comment (artifact not found)
         if: steps.download.outcome == 'failure'
-        uses: hibernate/.github/actions/upsert-pr-comment@ca2763f1abf58b9db9dbb0d289a49b54cef4aee4
+        uses: hibernate/.github/actions/upsert-pr-comment@4ee8af451af6a8e9fa87771d6c444559c8ef0cc4
         with:
           marker: '<!-- docs-preview -->'
           pr-number: ${{ needs.setup.outputs.pr-number }}
@@ -323,7 +323,7 @@ jobs:
 
       - name: Post or update PR comment (failure)
         if: steps.download.outcome == 'success' && steps.deploy.outcome == 'failure'
-        uses: hibernate/.github/actions/upsert-pr-comment@ca2763f1abf58b9db9dbb0d289a49b54cef4aee4
+        uses: hibernate/.github/actions/upsert-pr-comment@4ee8af451af6a8e9fa87771d6c444559c8ef0cc4
         with:
           marker: '<!-- docs-preview -->'
           pr-number: ${{ needs.setup.outputs.pr-number }}
