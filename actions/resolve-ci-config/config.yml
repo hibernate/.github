@@ -48,6 +48,18 @@ hibernate/hibernate-search:
     sonar-java-libraries: 'build/reports/target/sonar-dependencies/*.jar'
     sonar-coverage-report: 'build/reports/target/site/jacoco-aggregate/jacoco.xml'
 
+hibernate/hibernate-reactive:
+  default:
+    build-scans: true
+    sonar: true
+    docs-preview: true
+  settings:
+    build-system: gradle
+    java-version: '25'
+    sonar-java-libraries: 'build/sonar-dependencies/*.jar'
+    sonar-coverage-report: 'reporting/build/reports/jacoco/mergeCodeCoverageReport/mergeCodeCoverageReport.xml'
+    sonar-project-key: 'hibernate_hibernate-reactive'
+
 hibernate/hibernate-models:
   default:
     sonar: true
