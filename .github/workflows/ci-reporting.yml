@@ -265,7 +265,7 @@ jobs:
           SHOW_LINKS: ${{ needs.setup.outputs.docs-preview-links }}
         run: |
           if [ "$SHOW_LINKS" != "true" ]; then
-            printf 'doc-links=[Home](%s)\n' "$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+            printf 'doc-links= - [Home](%s)\n' "$DEPLOY_URL" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -305,6 +305,7 @@ jobs:
             Preview deployed for commit ${{ needs.setup.outputs.head-sha }}:
 
             ${{ steps.links.outputs.doc-links }}
+
             _This preview will be removed when the PR is closed._
 
       - name: Post or update PR comment (artifact not found)
