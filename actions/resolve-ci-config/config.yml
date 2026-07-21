@@ -40,7 +40,6 @@ hibernate/hibernate-validator:
 hibernate/hibernate-models:
   default:
     sonar: true
-    docs-preview: true
   settings:
     build-system: gradle
     java-version: '25'
