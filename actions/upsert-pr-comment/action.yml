@@ -35,16 +35,22 @@ runs:
         BODY=$(printf '%s\n%s' "$MARKER" "$CONTENT")
 
         ESCAPED_MARKER=$(echo "$MARKER" | sed 's/["\]/\\&/g')
-        COMMENT_ID=$(gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments" --paginate \
-          --jq ".[] | select(.body | startswith(\"${ESCAPED_MARKER}\")) | .id" | head -1 || true)
+        COMMENT_ID=""
+        if ! COMMENTS_RESPONSE=$(gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments" --paginate 2>&1); then
+          echo "::warning::Failed to list comments: ${COMMENTS_RESPONSE}"
+        else
+          COMMENT_ID=$(echo "$COMMENTS_RESPONSE" \
+            | jq -r ".[] | select(.body | startswith(\"${ESCAPED_MARKER}\")) | .id" | head -1 || true)
+        fi
 
         if [ -n "$COMMENT_ID" ]; then
-          gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments/${COMMENT_ID}" \
+          gh api "repos/${REPO_FULL_NAME}/issues/comments/${COMMENT_ID}" \
             -X PATCH -f body="$BODY"
           echo "::notice::Updated existing comment (marker: ${MARKER})"
         elif [ "$UPDATE_ONLY" = "true" ]; then
           echo "::notice::No matching comment found, skipping (update-only mode)"
         else
-          gh pr comment "$PR_NUMBER" --repo "$REPO_FULL_NAME" --body "$BODY"
+          gh api "repos/${REPO_FULL_NAME}/issues/${PR_NUMBER}/comments" \
+            -f body="$BODY"
           echo "::notice::Created new comment (marker: ${MARKER})"
         fi
