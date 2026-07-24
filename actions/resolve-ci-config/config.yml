@@ -69,6 +69,18 @@ hibernate/hibernate-models:
     sonar-java-libraries: 'build/sonar-dependencies/*.jar'
     sonar-coverage-report: 'reporting/build/reports/jacoco/mergeCodeCoverageReport/mergeCodeCoverageReport.xml'
 
+hibernate/hibernate-nosql:
+  default:
+    build-scans: true
+    sonar: true
+    docs-preview: true
+  settings:
+    build-system: gradle
+    java-version: '25'
+    gradle-args: '-Igradle/init.gradle'
+    sonar-java-libraries: 'target/sonar-dependencies/*.jar'
+    sonar-coverage-report: 'reporting/target/reports/jacoco/mergeCodeCoverageReport/mergeCodeCoverageReport.xml'
+
 hibernate/hibernate.org:
   default:
     docs-preview: true
