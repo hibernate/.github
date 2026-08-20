@@ -52,6 +52,12 @@ outputs:
   docs-preview-links:
     description: 'Whether to list individual doc section links in the preview comment'
     value: ${{ steps.resolve.outputs.docs-preview-links }}
+  reproducibility-check:
+    description: 'Whether the reproducible build check is enabled'
+    value: ${{ steps.resolve.outputs.reproducibility-check }}
+  repro-reference-repo:
+    description: 'Maven repository id to compare against for artifact:compare'
+    value: ${{ steps.resolve.outputs.repro-reference-repo }}
 
 runs:
   using: "composite"
@@ -69,6 +75,7 @@ runs:
             echo "build-scans=false"
             echo "sonar=false"
             echo "docs-preview=false"
+            echo "reproducibility-check=false"
           } >> "$GITHUB_OUTPUT"
         }
 
@@ -104,6 +111,8 @@ runs:
             "sonar": (.sonar | bool("false")),
             "docs-preview": (.["docs-preview"] | bool("false")),
             "docs-preview-links": (.["docs-preview-links"] | bool("true")),
+            "reproducibility-check": (.["reproducibility-check"] | bool("false")),
+            "repro-reference-repo": (.["repro-reference-repo"] // "hibernate-maven-central"),
             "build-system": (.["build-system"] // "gradle"),
             "java-version": (.["java-version"] // "25"),
             "gradle-args": (.["gradle-args"] // ""),
