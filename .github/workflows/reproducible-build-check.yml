@@ -1,0 +1,131 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Red Hat Inc. and Hibernate Authors
+
+name: Reproducible build check
+
+on:
+  workflow_call:
+
+defaults:
+  run:
+    shell: bash
+
+permissions: { }
+
+jobs:
+  setup:
+    name: Resolve configuration
+    runs-on: ubuntu-latest
+    outputs:
+      reproducibility-check: ${{ steps.config.outputs.reproducibility-check }}
+      build-system: ${{ steps.config.outputs.build-system }}
+      java-version: ${{ steps.config.outputs.java-version }}
+      gradle-args: ${{ steps.config.outputs.gradle-args }}
+      maven-args: ${{ steps.config.outputs.maven-args }}
+      repro-reference-repo: ${{ steps.config.outputs.repro-reference-repo }}
+    steps:
+      - name: Resolve feature flags and settings
+        id: config
+        uses: hibernate/.github/actions/resolve-ci-config@3557603173bed679b6b8e73add161d31c87793b6
+        with:
+          repository: ${{ github.repository }}
+          branch: ${{ github.ref_name }}
+
+  check:
+    name: Check build reproducibility
+    needs: setup
+    if: needs.setup.outputs.reproducibility-check == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.4.0
+        with:
+          distribution: 'temurin'
+          java-version: ${{ needs.setup.outputs.java-version }}
+
+      # Gradle has no built-in reproducibility comparison, so we build twice into
+      # two separate local Maven repositories and diff the artifact checksums.
+      - name: Reproducible build check (Gradle)
+        if: needs.setup.outputs.build-system == 'gradle'
+        env:
+          COMMON_GRADLE_ARGS: ${{ needs.setup.outputs.gradle-args }}
+        run: |
+          read -ra gradle_args <<< "$COMMON_GRADLE_ARGS"
+
+          ./gradlew --no-daemon clean publishToMavenLocal --no-build-cache \
+            "${gradle_args[@]}" -Dmaven.repo.local="${GITHUB_WORKSPACE}/build1"
+          ./gradlew --no-daemon clean publishToMavenLocal --no-build-cache \
+            "${gradle_args[@]}" -Dmaven.repo.local="${GITHUB_WORKSPACE}/build2"
+
+          # Compare the two builds (adapted from hibernate-models/ci/compare-build-results.sh).
+          outputDir1="${GITHUB_WORKSPACE}/build1"
+          outputDir2="${GITHUB_WORKSPACE}/build2"
+          ok=() ; okFiles=() ; ko=() ; koFiles=()
+          while IFS= read -r f; do
+            flocal="${f#"$outputDir1"}"
+            sha1=$(sha512sum "$f" | cut -f 1 -d ' ')
+            sha2=$(sha512sum "${outputDir2}${flocal}" | cut -f 1 -d ' ')
+            if [ "$sha1" = "$sha2" ]; then
+              ok+=("$flocal") ; okFiles+=("${flocal##*/}")
+            else
+              ko+=("$flocal") ; koFiles+=("${flocal##*/}")
+            fi
+          done < <(find "$outputDir1" -type f | grep -v 'javadoc.jar$' | grep -v 'maven-metadata-local.xml$' | sort)
+
+          buildcompare="${GITHUB_WORKSPACE}/.buildcompare"
+          {
+            echo "ok=${#ok[@]}"
+            echo "ko=${#ko[@]}"
+            echo "okFiles=\"${okFiles[*]}\""
+            echo "koFiles=\"${koFiles[*]}\""
+            echo ""
+            echo "# see what caused the mismatch by running the following diffoscope commands"
+            for f in "${ko[@]}"; do
+              echo "# diffoscope ${outputDir1}${f} ${outputDir2}${f}"
+            done
+          } > "$buildcompare"
+          cat "$buildcompare"
+
+          if [ "${#ko[@]}" -ne 0 ]; then
+            echo "::error::Build is not reproducible: ${#ko[@]} artifact(s) differ"
+            exit 1
+          fi
+          echo "::notice::Build is reproducible: ${#ok[@]} artifact(s) match"
+
+      # Maven ships a native reproducibility comparison (artifact:compare), so we
+      # produce the reference artifacts first, then rebuild and compare against them.
+      - name: Reproducible build check (Maven)
+        if: needs.setup.outputs.build-system == 'maven'
+        env:
+          MAVEN_ARGS: ${{ needs.setup.outputs.maven-args }}
+          REFERENCE_REPO: ${{ needs.setup.outputs.repro-reference-repo }}
+        run: |
+          read -ra mvn_args <<< "$MAVEN_ARGS"
+
+          # Produce the reference artifacts into the local repository.
+          ./mvnw clean install -Preproducibility-check "${mvn_args[@]}"
+
+          # Rebuild from scratch and compare the fresh artifacts against the reference.
+          ./mvnw clean verify artifact:compare \
+            -Dreference.repo="$REFERENCE_REPO" \
+            -Preproducibility-check \
+            --fail-at-end \
+            -Dscan=false -Dno-build-cache \
+            "${mvn_args[@]}"
+
+      - name: Upload build comparison report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: buildcompare
+          path: |
+            .buildcompare
+            **/.buildcompare
+          if-no-files-found: ignore
