@@ -12,12 +12,18 @@
 #   1. branches.<branch>.<key>  (per-branch override)
 #   2. default.<key>            (base feature flags)
 #   3. settings.<key>           (repo-level configuration)
+#
+# Reproducible build check keys (see .github/workflows/reproducible-build-check.yml):
+#   reproducibility-check:  enable the reproducible build check (default: false)
+#   repro-reference-repo:   Maven repository id passed to artifact:compare
+#                           (Maven only, default: hibernate-maven-central)
 
 hibernate/hibernate-orm:
   default:
     build-scans: true
     sonar: true
     docs-preview: true
+    reproducibility-check: true
   settings:
     build-system: gradle
     java-version: '25'
@@ -35,6 +41,7 @@ hibernate/hibernate-validator:
     build-scans: true
     sonar: true
     docs-preview: true
+    reproducibility-check: true
   settings:
     build-system: maven
     java-version: '25'
@@ -46,6 +53,7 @@ hibernate/hibernate-search:
   default:
     build-scans: true
     docs-preview: true
+    reproducibility-check: true
   settings:
     build-system: maven
     java-version: '25'
@@ -58,6 +66,7 @@ hibernate/hibernate-reactive:
     build-scans: true
     sonar: true
     docs-preview: true
+    reproducibility-check: true
   settings:
     build-system: gradle
     java-version: '25'
@@ -68,6 +77,7 @@ hibernate/hibernate-reactive:
 hibernate/hibernate-models:
   default:
     sonar: true
+    reproducibility-check: true
   settings:
     build-system: gradle
     java-version: '25'
@@ -79,6 +89,7 @@ hibernate/hibernate-nosql:
     build-scans: true
     sonar: true
     docs-preview: true
+    reproducibility-check: true
   settings:
     build-system: gradle
     java-version: '25'
