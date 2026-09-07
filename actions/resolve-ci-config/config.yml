@@ -24,6 +24,11 @@ hibernate/hibernate-orm:
     gradle-args: '-Igradle/init.gradle'
     sonar-java-libraries: 'target/sonar-dependencies/*.jar'
     sonar-coverage-report: 'reporting/target/reports/jacoco/mergeCodeCoverageReport/mergeCodeCoverageReport.xml'
+  branches:
+    '6.6':
+      java-version: '11'
+    '7.1':
+      java-version: '21'
 
 hibernate/hibernate-validator:
   default:
