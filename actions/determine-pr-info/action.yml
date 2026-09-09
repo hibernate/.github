@@ -16,6 +16,9 @@ outputs:
   head-sha:
     description: 'Short (7-char) head commit SHA'
     value: ${{ steps.resolve.outputs.head-sha }}
+  head-sha-full:
+    description: 'Full (40-char) head commit SHA'
+    value: ${{ steps.resolve.outputs.head-sha-full }}
   target-branch:
     description: 'The PR target branch, or the pushed branch for push events'
     value: ${{ steps.resolve.outputs.target-branch }}
@@ -46,6 +49,7 @@ runs:
             echo "is-pull-request=false"
             echo "pr-number="
             echo "head-sha=${HEAD_SHA:0:7}"
+            echo "head-sha-full=$HEAD_SHA"
             echo "target-branch=$BRANCH_NAME"
             echo "head-branch=$BRANCH_NAME"
           } >> "$GITHUB_OUTPUT"
@@ -72,6 +76,7 @@ runs:
           echo "is-pull-request=true"
           echo "pr-number=$PR_NUMBER"
           echo "head-sha=${PR_HEAD_SHA:0:7}"
+          echo "head-sha-full=$PR_HEAD_SHA"
           echo "target-branch=$TARGET_BRANCH"
           echo "head-branch=$BRANCH_NAME"
         } >> "$GITHUB_OUTPUT"

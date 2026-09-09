@@ -76,8 +76,19 @@ permissions: { }
 jobs:
   report:
     uses: hibernate/.github/.github/workflows/ci-reporting.yml@main
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: write  # only needed for docs preview comments
     secrets: inherit
 ```
+
+> **Permissions note:** `checks: write` is required for the CI Reporting Summary
+> check run. `pull-requests: write` is only needed if docs preview is enabled
+> (it posts PR comments). `contents: read` is only needed if build scans are
+> enabled. Repos that only use Sonar can use just `actions: read` and
+> `checks: write`.
 
 ### Step 4: Create the cleanup workflow
 
