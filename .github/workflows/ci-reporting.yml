@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: read
+      checks: write
       pull-requests: read
     outputs:
       build-scans: ${{ steps.config.outputs.build-scans }}
@@ -36,8 +37,10 @@ jobs:
       is-pull-request: ${{ steps.pr-info.outputs.is-pull-request }}
       pr-number: ${{ steps.pr-info.outputs.pr-number }}
       head-sha: ${{ steps.pr-info.outputs.head-sha }}
+      head-sha-full: ${{ steps.pr-info.outputs.head-sha-full }}
       target-branch: ${{ steps.pr-info.outputs.target-branch }}
       head-branch: ${{ steps.pr-info.outputs.head-branch }}
+      check-run-id: ${{ steps.create-check.outputs.check-run-id }}
     steps:
       - name: Determine PR info
         id: pr-info
@@ -50,6 +53,27 @@ jobs:
           repository: ${{ github.event.workflow_run.repository.full_name }}
           branch: ${{ steps.pr-info.outputs.target-branch }}
 
+      - name: Create in-progress check run
+        id: create-check
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          HEAD_SHA: ${{ steps.pr-info.outputs.head-sha-full }}
+          REPORTING_WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const { data } = await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head_sha: process.env.HEAD_SHA,
+              name: 'CI Reporting Summary',
+              status: 'in_progress',
+              output: {
+                title: 'CI reporting in progress…',
+                summary: `[View reporting workflow run](${process.env.REPORTING_WORKFLOW_URL})`,
+              },
+            });
+            core.setOutput('check-run-id', data.id);
+
   publish-build-scans:
     name: Publish Develocity build scans
     needs: setup
@@ -58,6 +82,10 @@ jobs:
     permissions:
       actions: read
       contents: read
+    outputs:
+      published: ${{ steps.publish-gradle.outputs.published || steps.publish-maven.outputs.published || '0' }}
+      failed: ${{ steps.publish-gradle.outputs.failed || steps.publish-maven.outputs.failed || '0' }}
+      scan-report: ${{ steps.publish-gradle.outputs.scan-report || steps.publish-maven.outputs.scan-report }}
     steps:
       - name: Check out target branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,6 +112,7 @@ jobs:
         continue-on-error: true
 
       - name: Publish build scans (Gradle)
+        id: publish-gradle
         if: steps.download.outcome == 'success' && needs.setup.outputs.build-system == 'gradle'
         env:
           DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY_PR }}
@@ -93,21 +122,39 @@ jobs:
           read -ra gradle_args <<< "$COMMON_GRADLE_ARGS"
           published=0
           failed=0
+          scan_report=""
           mkdir -p ~/.gradle/
           for build_scan_data_directory in /tmp/downloaded-build-scan-data/*
           do
             rm -rf ~/.gradle/build-scan-data
             mv "$build_scan_data_directory" ~/.gradle/build-scan-data
-            if ./gradlew "${gradle_args[@]}" --no-build-cache buildScanPublishPrevious; then
+            job_name=$(basename "$build_scan_data_directory")
+            if output=$(./gradlew "${gradle_args[@]}" --no-build-cache buildScanPublishPrevious 2>&1); then
+              echo "$output"
               published=$((published + 1))
+              url=$(echo "$output" | grep -A1 'Publishing Build Scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1)
+              if [ -n "$url" ]; then
+                scan_report="${scan_report}- [${job_name}](${url})"$'\n'
+              else
+                scan_report="${scan_report}- ${job_name}"$'\n'
+              fi
             else
-              echo "::warning::Failed to publish build scan from $(basename "$build_scan_data_directory")"
+              echo "$output"
+              echo "::warning::Failed to publish build scan from $job_name"
               failed=$((failed + 1))
             fi
           done
           echo "::notice::Published $published build scan(s), $failed failed"
+          {
+            echo "published=$published"
+            echo "failed=$failed"
+            echo "scan-report<<EOF"
+            printf '%s' "$scan_report"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Publish build scans (Maven)
+        id: publish-maven
         if: steps.download.outcome == 'success' && needs.setup.outputs.build-system == 'maven'
         env:
           DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY_PR }}
@@ -115,15 +162,45 @@ jobs:
         run: |
           shopt -s nullglob
           read -ra mvn_args <<< "$MAVEN_ARGS"
-          status=0
+          published=0
+          failed=0
+          scan_report=""
           mkdir -p ~/.m2/.develocity/
           for build_scan_data_directory in /tmp/downloaded-build-scan-data/*
           do
             rm -rf ~/.m2/.develocity/build-scan-data
-            mv "$build_scan_data_directory" ~/.m2/.develocity/build-scan-data \
-            && ./mvnw "${mvn_args[@]}" develocity:build-scan-publish-previous || status=1
+            job_name=$(basename "$build_scan_data_directory")
+            if ! mv "$build_scan_data_directory" ~/.m2/.develocity/build-scan-data; then
+              echo "::warning::Failed to move build scan data from $job_name"
+              failed=$((failed + 1))
+              continue
+            fi
+            if output=$(./mvnw "${mvn_args[@]}" develocity:build-scan-publish-previous 2>&1); then
+              echo "$output"
+              published=$((published + 1))
+              url=$(echo "$output" | grep -A1 'Publishing Build Scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1)
+              if [ -n "$url" ]; then
+                scan_report="${scan_report}- [${job_name}](${url})"$'\n'
+              else
+                scan_report="${scan_report}- ${job_name}"$'\n'
+              fi
+            else
+              echo "$output"
+              echo "::warning::Failed to publish build scan from $job_name"
+              failed=$((failed + 1))
+            fi
           done
-          exit "$status"
+          echo "::notice::Published $published build scan(s), $failed failed"
+          {
+            echo "published=$published"
+            echo "failed=$failed"
+            echo "scan-report<<EOF"
+            printf '%s' "$scan_report"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$failed" -gt 0 ]; then
+            exit 1
+          fi
 
   publish-sonar:
     name: Publish Sonar scan
@@ -134,6 +211,8 @@ jobs:
       actions: read
       contents: read
       pull-requests: read
+    outputs:
+      sonar-url: ${{ steps.analyze.outputs.sonar-url }}
     steps:
       - name: Check out target branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -189,6 +268,7 @@ jobs:
           mv "$HOME/.sonar/sonar-scanner-$SONAR_SCANNER_VERSION"/* "$HOME/.sonar/"
 
       - name: Sonar Analysis
+        id: analyze
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           REPO_FULL_NAME: ${{ github.event.workflow_run.repository.full_name }}
@@ -215,12 +295,16 @@ jobs:
             EXTRA_ARGS=("-Dsonar.branch.name=$HEAD_BRANCH")
           fi
 
-          "$HOME/.sonar/bin/sonar-scanner" "${EXTRA_ARGS[@]}" \
+          sonar_output=$("$HOME/.sonar/bin/sonar-scanner" "${EXTRA_ARGS[@]}" \
             -Dsonar.host.url="https://sonarcloud.io" \
             -Dsonar.organization="hibernate" \
             -Dsonar.projectKey="$SONAR_PROJECT_KEY" \
             -Dsonar.java.libraries="$(pwd)/$SONAR_JAVA_LIBRARIES" \
-            -Dsonar.coverage.jacoco.xmlReportPaths="$(pwd)/$SONAR_COVERAGE_REPORT"
+            -Dsonar.coverage.jacoco.xmlReportPaths="$(pwd)/$SONAR_COVERAGE_REPORT" \
+            2>&1) && sonar_status=0 || sonar_status=$?
+          echo "$sonar_output"
+          echo "sonar-url=$(echo "$sonar_output" | grep 'ANALYSIS SUCCESSFUL' | grep -oE 'https://\S+' | head -1)" >> "$GITHUB_OUTPUT"
+          exit "$sonar_status"
 
   deploy-docs-preview:
     name: Deploy docs preview
@@ -233,6 +317,8 @@ jobs:
     permissions:
       actions: read
       pull-requests: write
+    outputs:
+      deploy-url: ${{ steps.deploy.outputs.url }}
     steps:
       - name: Download documentation artifact
         id: download
@@ -334,3 +420,108 @@ jobs:
             Preview deployment failed for commit ${{ needs.setup.outputs.head-sha }}.
 
             [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+
+  report-check:
+    name: Create CI report check
+    needs: [setup, publish-build-scans, publish-sonar, deploy-docs-preview]
+    if: always() && needs.setup.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+    steps:
+      - name: Update check run with report summary
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          CHECK_RUN_ID: ${{ needs.setup.outputs.check-run-id }}
+          BUILD_SCANS_RESULT: ${{ needs.publish-build-scans.result }}
+          BUILD_SCANS_PUBLISHED: ${{ needs.publish-build-scans.outputs.published }}
+          BUILD_SCANS_FAILED: ${{ needs.publish-build-scans.outputs.failed }}
+          SCAN_REPORT: ${{ needs.publish-build-scans.outputs.scan-report }}
+          SONAR_RESULT: ${{ needs.publish-sonar.result }}
+          SONAR_URL: ${{ needs.publish-sonar.outputs.sonar-url }}
+          DOCS_RESULT: ${{ needs.deploy-docs-preview.result }}
+          DOCS_URL: ${{ needs.deploy-docs-preview.outputs.deploy-url }}
+          CI_WORKFLOW_URL: ${{ github.server_url }}/${{ github.event.workflow_run.repository.full_name }}/actions/runs/${{ github.event.workflow_run.id }}
+          REPORTING_WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const features = [];
+            let summary = '';
+
+            // Develocity Build Scans
+            if (process.env.BUILD_SCANS_RESULT !== 'skipped') {
+              const published = process.env.BUILD_SCANS_PUBLISHED || '0';
+              const failed = process.env.BUILD_SCANS_FAILED || '0';
+              const scanReport = (process.env.SCAN_REPORT || '').trim();
+
+              features.push('build scans');
+              summary += '### Develocity Build Scans\n\n';
+              summary += `Published ${published} build scan(s)`;
+              if (failed !== '0') {
+                summary += `, ${failed} failed`;
+              }
+              summary += '\n\n';
+              if (scanReport) {
+                summary += scanReport + '\n\n';
+              }
+            }
+
+            // Sonar Analysis
+            if (process.env.SONAR_RESULT !== 'skipped') {
+              features.push('Sonar');
+              summary += '### Sonar Analysis\n\n';
+              const sonarUrl = process.env.SONAR_URL;
+              if (sonarUrl) {
+                if (process.env.SONAR_RESULT === 'success') {
+                  summary += `[View on SonarCloud](${sonarUrl})\n\n`;
+                } else {
+                  summary += `Analysis failed — [View on SonarCloud](${sonarUrl})\n\n`;
+                }
+              } else {
+                summary += `Analysis ${process.env.SONAR_RESULT}\n\n`;
+              }
+            }
+
+            // Documentation Preview
+            if (process.env.DOCS_RESULT !== 'skipped') {
+              features.push('docs preview');
+              summary += '### Documentation Preview\n\n';
+              const docsUrl = process.env.DOCS_URL;
+              if (docsUrl) {
+                summary += `[View preview](${docsUrl})\n\n`;
+              } else if (process.env.DOCS_RESULT === 'success') {
+                summary += 'No documentation artifact found.\n\n';
+              } else {
+                summary += 'Deployment failed.\n\n';
+              }
+            }
+
+            // Links to workflow runs
+            summary += '---\n';
+            summary += `[CI workflow run](${process.env.CI_WORKFLOW_URL})`;
+            summary += ` · [Reporting workflow run](${process.env.REPORTING_WORKFLOW_URL})`;
+            summary += '\n';
+
+            // Determine conclusion
+            const results = [
+              process.env.BUILD_SCANS_RESULT,
+              process.env.SONAR_RESULT,
+              process.env.DOCS_RESULT,
+            ].filter(r => r && r !== 'skipped');
+            const conclusion = results.some(r => r === 'failure') ? 'failure' : 'neutral';
+
+            const title = features.length > 0
+              ? `Reported: ${features.join(', ')}`
+              : 'No reports configured';
+
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: parseInt(process.env.CHECK_RUN_ID),
+              status: 'completed',
+              conclusion,
+              output: {
+                title,
+                summary: summary || 'No CI reports were generated.',
+              },
+            });
