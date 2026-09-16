@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       branch: ${{ steps.branch.outputs.branch }}
-      reproducibility-check: ${{ steps.config.outputs.reproducibility-check }}
+      reproducibility-check: ${{ steps.updated.outputs.active || false }}
       build-system: ${{ steps.config.outputs.build-system }}
       java-version: ${{ steps.config.outputs.java-version }}
       gradle-args: ${{ steps.config.outputs.gradle-args }}
@@ -40,6 +40,35 @@ jobs:
         with:
           repository: ${{ github.repository }}
           branch: ${{ steps.branch.outputs.branch }}
+
+      - name: Check out repository
+        if: ${{ steps.config.outputs.reproducibility-check }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ steps.branch.outputs.branch }}
+          persist-credentials: false
+
+      - name: Check if branch has new commits in the past 14 days
+        if: ${{ steps.config.outputs.reproducibility-check }}
+        id: updated
+        run: |
+          MAX_DAYS=14
+          THRESHOLD_SECONDS=$(( MAX_DAYS * 86400 ))
+          
+          # Get timestamp of the latest commit on the current branch (Unix epoch)
+          LAST_COMMIT_TIME=$(git log -1 --format=%ct HEAD)
+          CURRENT_TIME=$(date +%s)
+          
+          AGE_SECONDS=$(( CURRENT_TIME - LAST_COMMIT_TIME ))
+          AGE_DAYS=$(( AGE_SECONDS / 86400 ))
+          
+          if [ "$AGE_SECONDS" -gt "$THRESHOLD_SECONDS" ]; then
+            echo "::warning:: Branch is stale! The last commit was $AGE_DAYS days ago (max allowed: $MAX_DAYS days)."
+            echo "active=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Branch is active. Last commit was $AGE_DAYS day(s) ago."
+            echo "active=true" >> "$GITHUB_OUTPUT"
+          fi
 
   check:
     name: Check build reproducibility
