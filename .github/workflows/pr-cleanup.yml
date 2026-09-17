@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Resolve feature flags
         id: config
-        uses: hibernate/.github/actions/resolve-ci-config@865fcd72c2399d04a2e8a08b6d7e18ae39180975
+        uses: hibernate/.github/actions/resolve-ci-config@fe878d7d820ffdd166f037ce11246c538e1f8b03
         with:
           repository: ${{ github.repository }}
           branch: ${{ github.event.pull_request.base.ref }}
@@ -44,7 +44,7 @@ jobs:
         continue-on-error: true
 
       - name: Update PR comment to indicate preview is removed
-        uses: hibernate/.github/actions/upsert-pr-comment@865fcd72c2399d04a2e8a08b6d7e18ae39180975
+        uses: hibernate/.github/actions/upsert-pr-comment@fe878d7d820ffdd166f037ce11246c538e1f8b03
         with:
           marker: '<!-- docs-preview -->'
           pr-number: ${{ github.event.pull_request.number }}
