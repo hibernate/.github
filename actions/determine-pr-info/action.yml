@@ -71,12 +71,16 @@ runs:
           exit 1
         fi
 
-        echo "::notice::PR #$PR_NUMBER, target: $TARGET_BRANCH, head: ${PR_HEAD_SHA:0:7}"
+        if [ "$PR_HEAD_SHA" != "$HEAD_SHA" ]; then
+          echo "::notice::PR head ($PR_HEAD_SHA) differs from workflow_run head ($HEAD_SHA); using workflow_run head"
+        fi
+
+        echo "::notice::PR #$PR_NUMBER, target: $TARGET_BRANCH, head: ${HEAD_SHA:0:7}"
         {
           echo "is-pull-request=true"
           echo "pr-number=$PR_NUMBER"
-          echo "head-sha=${PR_HEAD_SHA:0:7}"
-          echo "head-sha-full=$PR_HEAD_SHA"
+          echo "head-sha=${HEAD_SHA:0:7}"
+          echo "head-sha-full=$HEAD_SHA"
           echo "target-branch=$TARGET_BRANCH"
           echo "head-branch=$BRANCH_NAME"
         } >> "$GITHUB_OUTPUT"
