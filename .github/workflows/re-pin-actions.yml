@@ -1,0 +1,126 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright Red Hat Inc. and Hibernate Authors
+
+name: Re-pin local actions
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+permissions: { }
+
+concurrency:
+  group: re-pin-actions
+  cancel-in-progress: false
+
+jobs:
+  re-pin:
+    name: Re-pin action references
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NEW_SHA: ${{ github.sha }}
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+      BRANCH_NAME: build/re-pin-actions
+      BASE_REF: ${{ github.ref_name }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check whether action pins are stale
+        id: check
+        run: |
+          set -euo pipefail
+
+          REFS=$(grep -rhoE 'hibernate/\.github/actions/[A-Za-z0-9._-]+@[0-9a-f]{40}' .github/workflows | sort -u || true)
+
+          STALE=""
+          while IFS= read -r ref; do
+            [ -z "$ref" ] && continue
+            path="${ref%@*}"
+            name="${path##*/}"
+            sha="${ref##*@}"
+            if ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then
+              echo "::warning::${name} is pinned to unknown commit ${sha:0:7}; will re-pin."
+              STALE+="$name@$sha"$'\n'
+              continue
+            fi
+            if ! git diff --quiet "$sha" HEAD -- "actions/$name/"; then
+              echo "${name}: pinned at ${sha:0:7}, but actions/${name}/ changed since then."
+              STALE+="$name@$sha"$'\n'
+            fi
+          done <<< "$REFS"
+
+          if [ -z "$STALE" ]; then
+            echo "All action pins are up to date; nothing to do."
+            {
+              echo 'needed=false'
+              echo 'stale='
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo 'needed=true'
+            echo 'stale<<REPIN_STALE'
+            printf '%s' "$STALE"
+            echo 'REPIN_STALE'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update pins and open or update pull request
+        if: steps.check.outputs.needed == 'true'
+        env:
+          STALE_REFS: ${{ steps.check.outputs.stale }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH_NAME"
+
+          find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 \
+            | xargs -0 sed -i -E "s|(hibernate/\.github/actions/[A-Za-z0-9._-]+)@[0-9a-f]{40}|\1@$NEW_SHA|g"
+
+          git add .github/workflows
+          if git diff --cached --quiet; then
+            echo "No changes to commit; exiting."
+            exit 0
+          fi
+          git commit -m 'Update the pinned versions of the action in the shared workflows'
+
+          {
+            echo "This pull request was opened automatically by the [Re-pin actions](${REPO_URL}/blob/main/.github/workflows/re-pin-actions.yml) workflow."
+            echo
+            echo "It updates the shared action references in \`.github/workflows/\` to [\`${NEW_SHA:0:7}\`](${REPO_URL}/commit/${NEW_SHA}), because these actions changed since they were last pinned:"
+            echo
+            while IFS= read -r ref; do
+              [ -z "$ref" ] && continue
+              name="${ref%@*}"
+              old="${ref##*@}"
+              echo "- \`actions/${name}\`: [\`${old:0:7}\`](${REPO_URL}/commit/${old}) → \`${NEW_SHA:0:7}\`"
+            done <<< "$STALE_REFS"
+            echo
+            echo "_This PR is managed by the workflow. If new commits land on \`main\` before it is merged, it will be updated automatically._"
+          } > pr-body.md
+
+          git push --force origin "HEAD:refs/heads/$BRANCH_NAME"
+
+          TITLE="Re-pin actions to ${NEW_SHA:0:7}"
+          PR_NUMBER=$(gh pr list --head "$BRANCH_NAME" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$PR_NUMBER" ]; then
+            echo "Updating existing pull request #${PR_NUMBER}."
+            gh pr edit "$PR_NUMBER" --title "$TITLE" --body-file pr-body.md
+          else
+            gh pr create --base "$BASE_REF" --head "$BRANCH_NAME" --title "$TITLE" --body-file pr-body.md
+          fi
