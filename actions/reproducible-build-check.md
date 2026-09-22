@@ -30,7 +30,7 @@ artifacts reproducible.
   (`reproducibleFileOrder = true`, `preserveFileTimestamps = false`, a fixed
   `outputTimestamp`, etc.).
 - **Maven** projects: a `reproducibility-check` profile and the
-  `reference.repo` used by `artifact:compare` (default: `hibernate-maven-central`)
+  `reference.repo` used by `artifact:compare` (default: `google-maven-central`)
   must be defined in the project (typically via `project.build.outputTimestamp`
   and the `maven-artifact-plugin`).
 
@@ -56,7 +56,7 @@ Maven projects may override the reference repository id:
 ```yaml
   settings:
     build-system: maven
-    repro-reference-repo: hibernate-maven-central
+    repro-reference-repo: google-maven-central
 ```
 
 ### Step 2: Create the caller workflow

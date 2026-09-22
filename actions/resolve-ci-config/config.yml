@@ -16,7 +16,7 @@
 # Reproducible build check keys (see .github/workflows/reproducible-build-check.yml):
 #   reproducibility-check:  enable the reproducible build check (default: false)
 #   repro-reference-repo:   Maven repository id passed to artifact:compare
-#                           (Maven only, default: hibernate-maven-central)
+#                           (Maven only, default: google-maven-central)
 
 hibernate/hibernate-orm:
   default:
