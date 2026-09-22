@@ -51,8 +51,10 @@ hibernate/hibernate-validator:
   branches:
     '8.0':
       java-version: '17'
+      reproducibility-check: false
     '6.2':
       java-version: '17'
+      reproducibility-check: false
 
 hibernate/hibernate-search:
   default:
