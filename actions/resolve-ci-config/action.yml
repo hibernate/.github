@@ -129,4 +129,5 @@ runs:
         BUILD_SCANS=$(grep '^build-scans=' <<< "$RESOLVED" | cut -d= -f2)
         SONAR=$(grep '^sonar=' <<< "$RESOLVED" | cut -d= -f2)
         DOCS_PREVIEW=$(grep '^docs-preview=' <<< "$RESOLVED" | cut -d= -f2)
-        echo "::notice::Config for $REPO @ $BRANCH: build-scans=$BUILD_SCANS, sonar=$SONAR, docs-preview=$DOCS_PREVIEW"
+        REPRODUCIBILITY_CHECK=$(grep '^reproducibility-check=' <<< "$RESOLVED" | cut -d= -f2)
+        echo "::notice::Config for $REPO @ $BRANCH: build-scans=$BUILD_SCANS, sonar=$SONAR, docs-preview=$DOCS_PREVIEW, reproducibility-check=$REPRODUCIBILITY_CHECK"
