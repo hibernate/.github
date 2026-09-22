@@ -36,7 +36,7 @@ jobs:
 
       - name: Resolve feature flags and settings
         id: config
-        uses: hibernate/.github/actions/resolve-ci-config@ea09f688b50b6a2ac60d9e261dc9af66735ce2b3
+        uses: hibernate/.github/actions/resolve-ci-config@0a9965d2b378b81b44bcf90712ef35637eb47356
         with:
           repository: ${{ github.repository }}
           branch: ${{ steps.branch.outputs.branch }}
