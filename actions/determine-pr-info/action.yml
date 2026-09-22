@@ -13,6 +13,9 @@ outputs:
   pr-number:
     description: 'The pull request number (empty if not a PR)'
     value: ${{ steps.resolve.outputs.pr-number }}
+  pr-state:
+    description: 'The PR state: OPEN, MERGED, or CLOSED (empty if not a PR)'
+    value: ${{ steps.resolve.outputs.pr-state }}
   head-sha:
     description: 'Short (7-char) head commit SHA'
     value: ${{ steps.resolve.outputs.head-sha }}
@@ -61,10 +64,11 @@ runs:
         fi
 
         # TODO: gh pr view matches by branch name; if multiple PRs share a branch, this may pick the wrong one
-        GH_RESPONSE=$(gh pr view "$BRANCH_NAME" --repo "$REPO_FULL_NAME" --json number,baseRefName,headRefOid)
+        GH_RESPONSE=$(gh pr view "$BRANCH_NAME" --repo "$REPO_FULL_NAME" --json number,baseRefName,headRefOid,state)
         PR_NUMBER=$(echo "$GH_RESPONSE" | jq -r '.number')
         TARGET_BRANCH=$(echo "$GH_RESPONSE" | jq -r '.baseRefName')
         PR_HEAD_SHA=$(echo "$GH_RESPONSE" | jq -r '.headRefOid')
+        PR_STATE=$(echo "$GH_RESPONSE" | jq -r '.state')
 
         if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
           echo "::error::Could not determine PR number for branch: $BRANCH_NAME"
@@ -75,10 +79,11 @@ runs:
           echo "::notice::PR head ($PR_HEAD_SHA) differs from workflow_run head ($HEAD_SHA); using workflow_run head"
         fi
 
-        echo "::notice::PR #$PR_NUMBER, target: $TARGET_BRANCH, head: ${HEAD_SHA:0:7}"
+        echo "::notice::PR #$PR_NUMBER ($PR_STATE), target: $TARGET_BRANCH, head: ${HEAD_SHA:0:7}"
         {
           echo "is-pull-request=true"
           echo "pr-number=$PR_NUMBER"
+          echo "pr-state=$PR_STATE"
           echo "head-sha=${HEAD_SHA:0:7}"
           echo "head-sha-full=$HEAD_SHA"
           echo "target-branch=$TARGET_BRANCH"
