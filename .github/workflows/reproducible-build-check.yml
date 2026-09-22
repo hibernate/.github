@@ -42,14 +42,14 @@ jobs:
           branch: ${{ steps.branch.outputs.branch }}
 
       - name: Check out repository
-        if: ${{ steps.config.outputs.reproducibility-check }}
+        if: ${{ steps.config.outputs.reproducibility-check == 'true' }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ steps.branch.outputs.branch }}
           persist-credentials: false
 
       - name: Check if branch has new commits in the past 14 days
-        if: ${{ steps.config.outputs.reproducibility-check }}
+        if: ${{ steps.config.outputs.reproducibility-check == 'true' }}
         id: updated
         run: |
           MAX_DAYS=14
