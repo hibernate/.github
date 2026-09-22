@@ -112,7 +112,7 @@ runs:
             "docs-preview": (.["docs-preview"] | bool("false")),
             "docs-preview-links": (.["docs-preview-links"] | bool("true")),
             "reproducibility-check": (.["reproducibility-check"] | bool("false")),
-            "repro-reference-repo": (.["repro-reference-repo"] // "hibernate-maven-central"),
+            "repro-reference-repo": (.["repro-reference-repo"] // "google-maven-central"),
             "build-system": (.["build-system"] // "gradle"),
             "java-version": (.["java-version"] // "25"),
             "gradle-args": (.["gradle-args"] // ""),
