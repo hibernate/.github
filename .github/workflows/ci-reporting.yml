@@ -36,6 +36,7 @@ jobs:
       docs-preview-links: ${{ steps.config.outputs.docs-preview-links }}
       is-pull-request: ${{ steps.pr-info.outputs.is-pull-request }}
       pr-number: ${{ steps.pr-info.outputs.pr-number }}
+      pr-state: ${{ steps.pr-info.outputs.pr-state }}
       head-sha: ${{ steps.pr-info.outputs.head-sha }}
       head-sha-full: ${{ steps.pr-info.outputs.head-sha-full }}
       target-branch: ${{ steps.pr-info.outputs.target-branch }}
@@ -206,7 +207,7 @@ jobs:
   publish-sonar:
     name: Publish Sonar scan
     needs: setup
-    if: needs.setup.outputs.sonar == 'true'
+    if: needs.setup.outputs.sonar == 'true' && needs.setup.outputs.pr-state != 'MERGED' && needs.setup.outputs.pr-state != 'CLOSED'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -224,26 +225,40 @@ jobs:
           fetch-depth: 0
 
       - name: Check out PR code
+        id: checkout-pr
         if: needs.setup.outputs.is-pull-request == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.setup.outputs.pr-number }}
+          REPO_FULL_NAME: ${{ github.event.workflow_run.repository.full_name }}
         run: |
-          gh pr checkout "$PR_NUMBER"
-          # Remove build wrappers so we don't accidentally run a build
-          rm -rf gradlew* mvnw*
+          if gh pr checkout "$PR_NUMBER"; then
+            rm -rf gradlew* mvnw*
+            exit 0
+          fi
+          # Checkout failed; check if the PR was merged/closed in the meantime
+          PR_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO_FULL_NAME" --json state --jq '.state')
+          if [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "CLOSED" ]; then
+            echo "::notice::PR #$PR_NUMBER was $PR_STATE before checkout; skipping Sonar analysis"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::error::Failed to check out PR #$PR_NUMBER (state: $PR_STATE)"
+          exit 1
 
       - name: Remove build wrappers (push)
         if: needs.setup.outputs.is-pull-request == 'false'
         run: rm -rf gradlew* mvnw*
 
       - name: Set up Java
+        if: steps.checkout-pr.outputs.skip != 'true'
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: 'temurin'
           java-version: ${{ needs.setup.outputs.java-version }}
 
       - name: Download coverage reports
+        if: steps.checkout-pr.outputs.skip != 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: ${{ needs.setup.outputs.sonar-artifact-pattern }}
@@ -255,6 +270,7 @@ jobs:
         continue-on-error: true
 
       - name: Install Sonar CLI
+        if: steps.checkout-pr.outputs.skip != 'true'
         run: |
           SONAR_HASH="8fbfb1eb546b734a60fc3e537108f06e389a8ca124fbab3a16236a8a51edcc15"
           SONAR_SCANNER_VERSION="8.0.1.6346"
@@ -269,6 +285,7 @@ jobs:
           mv "$HOME/.sonar/sonar-scanner-$SONAR_SCANNER_VERSION"/* "$HOME/.sonar/"
 
       - name: Sonar Analysis
+        if: steps.checkout-pr.outputs.skip != 'true'
         id: analyze
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -310,7 +327,7 @@ jobs:
   deploy-docs-preview:
     name: Deploy docs preview
     needs: setup
-    if: needs.setup.outputs.docs-preview == 'true' && needs.setup.outputs.is-pull-request == 'true'
+    if: needs.setup.outputs.docs-preview == 'true' && needs.setup.outputs.pr-state == 'OPEN'
     concurrency:
       group: docs-preview-${{ github.event.workflow_run.repository.full_name }}-${{ needs.setup.outputs.pr-number }}
       cancel-in-progress: true
