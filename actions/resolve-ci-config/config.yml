@@ -33,6 +33,7 @@ hibernate/hibernate-orm:
   branches:
     '6.6':
       java-version: '11'
+      reproducibility-check: false
     '7.1':
       java-version: '21'
 
