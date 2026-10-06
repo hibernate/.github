@@ -288,6 +288,7 @@ jobs:
         if: steps.checkout-pr.outputs.skip != 'true'
         id: analyze
         env:
+          SONAR_SCANNER_OPTS: "-Xmx4g"
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           REPO_FULL_NAME: ${{ github.event.workflow_run.repository.full_name }}
           SONAR_PROJECT_KEY: ${{ needs.setup.outputs.sonar-project-key }}
