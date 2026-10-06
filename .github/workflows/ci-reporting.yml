@@ -6,6 +6,9 @@ name: CI reporting
 on:
   workflow_call:
 
+concurrency:
+  group: ci-reporting-${{ github.event.workflow_run.head_sha }}
+
 defaults:
   run:
     shell: bash
