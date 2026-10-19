@@ -6,7 +6,7 @@ This document explains how to report security issues for **Hibernate** projects.
 
 Please report suspected security issues privately.
 
-- Email **psirt@us.ibm.com**. Find more details (PGP key, other ways of reaching out) in [IBM's Security Vulnerability Management page](https://www.ibm.com/trust/security-vulnerability-management).
+- Submit vulnerability reports via https://hackerone.com/ibm. Find more details (PGP key, other ways of reaching out) in [IBM's Security Vulnerability Management page](https://www.ibm.com/trust/security-vulnerability-management).
 - Do **not** open a public JIRA/GitHub issue for suspected vulnerabilities.
 
 When reporting, please include:
