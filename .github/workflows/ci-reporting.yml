@@ -130,6 +130,7 @@ jobs:
           # artifacts match the pattern. When a single artifact matches, its contents
           # are extracted directly into the download path. Detect and normalize so
           # that the processing loop always sees per-artifact subdirectories.
+          # shellcheck disable=SC2206
           artifact_subdirs=("$download_dir"/${BUILD_SCAN_ARTIFACT_PATTERN})
           if [ ${#artifact_subdirs[@]} -gt 0 ]; then
             echo "Found ${#artifact_subdirs[@]} artifact subdirectory(ies); no normalization needed"
