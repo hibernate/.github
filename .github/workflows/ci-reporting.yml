@@ -116,6 +116,40 @@ jobs:
           path: /tmp/downloaded-build-scan-data/
         continue-on-error: true
 
+      - name: Normalize build scan data directory
+        if: steps.download.outcome == 'success'
+        env:
+          BUILD_SCAN_ARTIFACT_PATTERN: ${{ needs.setup.outputs.build-scan-artifact-pattern }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.event.workflow_run.repository.full_name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          download_dir="/tmp/downloaded-build-scan-data"
+          shopt -s nullglob
+          # download-artifact creates per-artifact subdirectories only when multiple
+          # artifacts match the pattern. When a single artifact matches, its contents
+          # are extracted directly into the download path. Detect and normalize so
+          # that the processing loop always sees per-artifact subdirectories.
+          artifact_subdirs=("$download_dir"/${BUILD_SCAN_ARTIFACT_PATTERN})
+          if [ ${#artifact_subdirs[@]} -gt 0 ]; then
+            echo "Found ${#artifact_subdirs[@]} artifact subdirectory(ies); no normalization needed"
+            exit 0
+          fi
+          if [ -z "$(ls -A "$download_dir" 2>/dev/null)" ]; then
+            echo "Download directory is empty; nothing to normalize"
+            exit 0
+          fi
+          # Look up the artifact name for a proper subdirectory name
+          pattern_prefix="${BUILD_SCAN_ARTIFACT_PATTERN%%\**}"
+          artifact_name=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
+            --paginate --jq '.artifacts[].name' \
+            | grep -m1 "^${pattern_prefix}" \
+            || echo "build-scan-data")
+          echo "Single artifact detected ($artifact_name); normalizing directory structure"
+          tmp_dir=$(mktemp -d)
+          mv "$download_dir"/* "$tmp_dir"/
+          mv "$tmp_dir" "$download_dir/$artifact_name"
+
       - name: Publish build scans (Gradle)
         id: publish-gradle
         if: steps.download.outcome == 'success' && needs.setup.outputs.build-system == 'gradle'
