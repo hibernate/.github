@@ -192,6 +192,9 @@ jobs:
             printf '%s' "$scan_report"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
+          if [ "$failed" -gt 0 ]; then
+            exit 1
+          fi
 
       - name: Publish build scans (Maven)
         id: publish-maven
