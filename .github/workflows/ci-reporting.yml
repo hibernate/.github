@@ -270,7 +270,7 @@ jobs:
           PR_NUMBER: ${{ needs.setup.outputs.pr-number }}
           REPO_FULL_NAME: ${{ github.event.workflow_run.repository.full_name }}
         run: |
-          if gh pr checkout "$PR_NUMBER"; then
+          if gh pr checkout "$PR_NUMBER" --force; then
             rm -rf gradlew* mvnw*
             exit 0
           fi
