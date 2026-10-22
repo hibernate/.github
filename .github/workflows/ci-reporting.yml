@@ -269,8 +269,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.setup.outputs.pr-number }}
           REPO_FULL_NAME: ${{ github.event.workflow_run.repository.full_name }}
+          HEAD_SHA: ${{ needs.setup.outputs.head-sha-full }}
         run: |
-          if gh pr checkout "$PR_NUMBER" --force; then
+          # Fetch and check out the exact commit that was built, not the PR
+          # branch tip which may have moved since the CI run started.
+          if git fetch origin "$HEAD_SHA" && git checkout "$HEAD_SHA"; then
             rm -rf gradlew* mvnw*
             exit 0
           fi
@@ -281,7 +284,7 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "::error::Failed to check out PR #$PR_NUMBER (state: $PR_STATE)"
+          echo "::error::Failed to check out PR #$PR_NUMBER at $HEAD_SHA (state: $PR_STATE)"
           exit 1
 
       - name: Remove build wrappers (push)
