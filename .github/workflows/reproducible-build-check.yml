@@ -160,11 +160,21 @@ jobs:
             -Dscan=false -Dno-build-cache \
             "${mvn_args[@]}"
 
+      - name: Prepare artifact name
+        id: artifact-name
+        if: always()
+        shell: bash
+        env:
+          BRANCH_NAME: ${{ needs.setup.outputs.branch || github.ref_name }}
+        run: |
+          safe_branch="${BRANCH_NAME//[^a-zA-Z0-9._-]/_}"
+          printf 'name=buildcompare-%s\n' "$safe_branch" >> "$GITHUB_OUTPUT"
+
       - name: Upload build comparison report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: buildcompare
+          name: ${{ steps.artifact-name.outputs.name }}
           path: |
             .buildcompare
             **/.buildcompare
