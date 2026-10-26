@@ -316,8 +316,8 @@ jobs:
       - name: Install Sonar CLI
         if: steps.checkout-pr.outputs.skip != 'true'
         run: |
-          SONAR_HASH="8fbfb1eb546b734a60fc3e537108f06e389a8ca124fbab3a16236a8a51edcc15"
-          SONAR_SCANNER_VERSION="8.0.1.6346"
+          SONAR_HASH="2f1f412ad4c36d23266371367e13214fea03add397fb789bbb3282fdc9fb1372"
+          SONAR_SCANNER_VERSION="8.2.0.6438"
           curl --create-dirs --fail -sSLo "$HOME/.sonar/sonar-scanner.zip" \
             "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-$SONAR_SCANNER_VERSION.zip"
           DOWNLOADED_HASH=$(sha256sum "$HOME/.sonar/sonar-scanner.zip" | awk '{print $1}')
