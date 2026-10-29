@@ -172,7 +172,7 @@ jobs:
             if output=$(./gradlew "${gradle_args[@]}" --no-build-cache buildScanPublishPrevious 2>&1); then
               echo "$output"
               published=$((published + 1))
-              url=$(echo "$output" | grep -A1 'Publishing Build Scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1)
+              url=$(echo "$output" | grep -A1 -i 'Publishing build scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1)
               if [ -n "$url" ]; then
                 scan_report="${scan_report}- [${job_name}](${url})"$'\n'
               else
@@ -221,7 +221,7 @@ jobs:
             if output=$(./mvnw "${mvn_args[@]}" develocity:build-scan-publish-previous 2>&1); then
               echo "$output"
               published=$((published + 1))
-              url=$(echo "$output" | grep -A1 'Publishing Build Scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1)
+              url=$(echo "$output" | grep -A1 -i 'Publishing build scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1)
               if [ -n "$url" ]; then
                 scan_report="${scan_report}- [${job_name}](${url})"$'\n'
               else
