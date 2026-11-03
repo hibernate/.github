@@ -302,6 +302,7 @@ jobs:
           java-version: ${{ needs.setup.outputs.java-version }}
 
       - name: Download coverage reports
+        id: download-coverage
         if: steps.checkout-pr.outputs.skip != 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -314,7 +315,7 @@ jobs:
         continue-on-error: true
 
       - name: Install Sonar CLI
-        if: steps.checkout-pr.outputs.skip != 'true'
+        if: steps.checkout-pr.outputs.skip != 'true' && (needs.setup.outputs.is-pull-request == 'true' || steps.download-coverage.outcome == 'success')
         run: |
           SONAR_HASH="2f1f412ad4c36d23266371367e13214fea03add397fb789bbb3282fdc9fb1372"
           SONAR_SCANNER_VERSION="8.2.0.6438"
@@ -329,7 +330,7 @@ jobs:
           mv "$HOME/.sonar/sonar-scanner-$SONAR_SCANNER_VERSION"/* "$HOME/.sonar/"
 
       - name: Sonar Analysis
-        if: steps.checkout-pr.outputs.skip != 'true'
+        if: steps.checkout-pr.outputs.skip != 'true' && (needs.setup.outputs.is-pull-request == 'true' || steps.download-coverage.outcome == 'success')
         id: analyze
         env:
           SONAR_SCANNER_JAVA_OPTS: "-Xmx4g"
