@@ -13,6 +13,14 @@ defaults:
   run:
     shell: bash
 
+env:
+  DEVELOCITY_JAVA_VERSION: '21'
+  DEVELOCITY_GRADLE_VERSION: '9.8.2'
+  DEVELOCITY_MAVEN_VERSION: '3.9.9'
+  DEVELOCITY_MAVEN_SHA256: '4ec3f26fb1a692473aea0235c300bd20f0f9fe741947c82c1234cefd76ac3a3c'
+  SONAR_SCANNER_VERSION: '8.2.0.6438'
+  SONAR_SCANNER_SHA256: '2f1f412ad4c36d23266371367e13214fea03add397fb789bbb3282fdc9fb1372'
+
 permissions: { }
 
 jobs:
@@ -83,27 +91,22 @@ jobs:
     name: Publish Develocity build scans
     needs: setup
     if: needs.setup.outputs.build-scans == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       actions: read
-      contents: read
     outputs:
       published: ${{ steps.publish-gradle.outputs.published || steps.publish-maven.outputs.published || '0' }}
       failed: ${{ steps.publish-gradle.outputs.failed || steps.publish-maven.outputs.failed || '0' }}
       scan-report: ${{ steps.publish-gradle.outputs.scan-report || steps.publish-maven.outputs.scan-report }}
     steps:
-      - name: Check out target branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          repository: ${{ github.event.workflow_run.repository.full_name }}
-          ref: ${{ needs.setup.outputs.target-branch }}
-
-      - name: Set up Java
+      # No checkout: the synthetic publish project needs nothing from the target
+      # repo, avoiding version-mismatch bugs and running untrusted code in this
+      # secret-holding job.
+      - name: Set up Java ${{ env.DEVELOCITY_JAVA_VERSION }}
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
-          java-version: ${{ needs.setup.outputs.java-version }}
+          java-version: ${{ env.DEVELOCITY_JAVA_VERSION }}
 
       - name: Download build scan artifacts
         id: download
@@ -151,15 +154,89 @@ jobs:
           mv "$download_dir"/* "$tmp_dir"/
           mv "$tmp_dir" "$download_dir/$artifact_name"
 
+      - name: Detect build scan version
+        id: detect-version
+        if: steps.download.outcome == 'success'
+        run: |
+          shopt -s nullglob
+          detected_version=""
+          for artifact_dir in /tmp/downloaded-build-scan-data/*/; do
+            job_name=$(basename "$artifact_dir")
+            version_dirs=()
+            for d in "$artifact_dir"/*/; do
+              version_dirs+=("$(basename "$d")")
+            done
+            if [ ${#version_dirs[@]} -ne 1 ]; then
+              echo "::error::Expected exactly one version directory in build scan data of $job_name, found ${#version_dirs[@]}"
+              exit 1
+            fi
+            v="${version_dirs[0]}"
+            if [ -z "$detected_version" ]; then
+              detected_version="$v"
+            elif [ "$detected_version" != "$v" ]; then
+              echo "::error::Inconsistent Develocity versions across artifacts: $detected_version vs $v (in $job_name)"
+              exit 1
+            fi
+          done
+          if [ -z "$detected_version" ]; then
+            echo "::warning::No valid build scan version detected in any artifact"
+            exit 0
+          fi
+          IFS='.' read -r v_major v_minor _ <<< "$detected_version"
+          : "${v_minor:=0}"
+          if ! [[ "$v_major" =~ ^[0-9]+$ && "$v_minor" =~ ^[0-9]+$ ]]; then
+            echo "::error::Non-numeric version components in build scan data ($detected_version)"
+            exit 1
+          fi
+          echo "Detected Develocity version: $detected_version (major=$v_major, minor=$v_minor)"
+          {
+            echo "DEVELOCITY_VERSION=$detected_version"
+            echo "DEVELOCITY_V_MAJOR=$v_major"
+            echo "DEVELOCITY_V_MINOR=$v_minor"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up Gradle ${{ env.DEVELOCITY_GRADLE_VERSION }}
+        if: steps.download.outcome == 'success' && needs.setup.outputs.build-system == 'gradle'
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          gradle-version: ${{ env.DEVELOCITY_GRADLE_VERSION }}
+
       - name: Publish build scans (Gradle)
         id: publish-gradle
         if: steps.download.outcome == 'success' && needs.setup.outputs.build-system == 'gradle'
         env:
           DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY_PR }}
-          COMMON_GRADLE_ARGS: ${{ needs.setup.outputs.gradle-args }}
         run: |
           shopt -s nullglob
-          read -ra gradle_args <<< "$COMMON_GRADLE_ARGS"
+
+          # com.gradle.develocity (>= 3.17) vs com.gradle.enterprise (< 3.17)
+          if [ "$DEVELOCITY_V_MAJOR" -gt 3 ] || { [ "$DEVELOCITY_V_MAJOR" -eq 3 ] && [ "$DEVELOCITY_V_MINOR" -ge 17 ]; }; then
+            plugin_id="com.gradle.develocity"
+            config_block="develocity"
+          else
+            plugin_id="com.gradle.enterprise"
+            config_block="gradleEnterprise"
+          fi
+
+          # Version is read from the DEVELOCITY_VERSION env var at settings
+          # evaluation time, never interpolated into Groovy source.
+          project_dir=$(mktemp -d)
+          cat > "$project_dir/settings.gradle" <<SETTINGS
+          pluginManagement {
+              plugins {
+                  id '${plugin_id}' version providers.environmentVariable('DEVELOCITY_VERSION').get()
+              }
+          }
+          plugins {
+              id '${plugin_id}'
+          }
+          ${config_block} {
+              server = "https://develocity.commonhaus.dev"
+          }
+          rootProject.name = "build-scan-publisher"
+          SETTINGS
+          touch "$project_dir/build.gradle"
+
           published=0
           failed=0
           scan_report=""
@@ -167,12 +244,17 @@ jobs:
           for build_scan_data_directory in /tmp/downloaded-build-scan-data/*
           do
             rm -rf ~/.gradle/build-scan-data
-            mv "$build_scan_data_directory" ~/.gradle/build-scan-data
             job_name=$(basename "$build_scan_data_directory")
-            if output=$(./gradlew "${gradle_args[@]}" --no-build-cache buildScanPublishPrevious 2>&1); then
+            if ! mv "$build_scan_data_directory" ~/.gradle/build-scan-data; then
+              echo "::warning::Failed to move build scan data from $job_name"
+              failed=$((failed + 1))
+              continue
+            fi
+
+            if output=$(gradle -p "$project_dir" --no-build-cache buildScanPublishPrevious 2>&1); then
               echo "$output"
               published=$((published + 1))
-              url=$(echo "$output" | grep -A1 -i 'Publishing build scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1)
+              url=$(echo "$output" | grep -A1 -i 'Publishing build scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1) || true
               if [ -n "$url" ]; then
                 scan_report="${scan_report}- [${job_name}](${url})"$'\n'
               else
@@ -184,6 +266,7 @@ jobs:
               failed=$((failed + 1))
             fi
           done
+          rm -rf "$project_dir"
           echo "::notice::Published $published build scan(s), $failed failed"
           {
             echo "published=$published"
@@ -196,15 +279,91 @@ jobs:
             exit 1
           fi
 
+      - name: Set up Maven ${{ env.DEVELOCITY_MAVEN_VERSION }}
+        if: steps.download.outcome == 'success' && needs.setup.outputs.build-system == 'maven'
+        run: |
+          curl --create-dirs --fail -sSLo "$HOME/.maven/maven.zip" \
+            "https://archive.apache.org/dist/maven/maven-3/$DEVELOCITY_MAVEN_VERSION/binaries/apache-maven-$DEVELOCITY_MAVEN_VERSION-bin.zip"
+          DOWNLOADED_HASH=$(sha256sum "$HOME/.maven/maven.zip" | awk '{print $1}')
+          if [ "$DOWNLOADED_HASH" != "$DEVELOCITY_MAVEN_SHA256" ]; then
+            echo "::error::Maven checksum mismatch. Expected: $DEVELOCITY_MAVEN_SHA256, got: $DOWNLOADED_HASH"
+            exit 1
+          fi
+          unzip -o "$HOME/.maven/maven.zip" -d "$HOME/.maven/"
+          echo "$HOME/.maven/apache-maven-$DEVELOCITY_MAVEN_VERSION/bin" >> "$GITHUB_PATH"
+
       - name: Publish build scans (Maven)
         id: publish-maven
         if: steps.download.outcome == 'success' && needs.setup.outputs.build-system == 'maven'
         env:
           DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY_PR }}
-          MAVEN_ARGS: ${{ needs.setup.outputs.maven-args }}
         run: |
           shopt -s nullglob
-          read -ra mvn_args <<< "$MAVEN_ARGS"
+
+          # develocity-maven-extension (>= 1.21) vs gradle-enterprise-maven-extension (< 1.21)
+          if [ "$DEVELOCITY_V_MAJOR" -gt 1 ] || { [ "$DEVELOCITY_V_MAJOR" -eq 1 ] && [ "$DEVELOCITY_V_MINOR" -ge 21 ]; }; then
+            artifact_id="develocity-maven-extension"
+            goal_prefix="develocity"
+            config_root="develocity"
+            config_xmlns="https://www.gradle.com/develocity-maven"
+            config_schema="https://www.gradle.com/schema/develocity-maven.xsd"
+            config_file="develocity.xml"
+          else
+            artifact_id="gradle-enterprise-maven-extension"
+            goal_prefix="gradle-enterprise"
+            config_root="gradleEnterprise"
+            config_xmlns="https://www.gradle.com/gradle-enterprise-maven"
+            config_schema="https://www.gradle.com/schema/gradle-enterprise-maven.xsd"
+            config_file="gradle-enterprise.xml"
+          fi
+
+          # Version is read from the DEVELOCITY_VERSION env var by Maven's
+          # property interpolation in extensions.xml and pluginManagement —
+          # never interpolated into XML source as text.
+          project_dir=$(mktemp -d)
+          mkdir -p "$project_dir/.mvn"
+          cat > "$project_dir/.mvn/extensions.xml" <<EXTENSIONS
+          <extensions>
+              <extension>
+                  <groupId>com.gradle</groupId>
+                  <artifactId>${artifact_id}</artifactId>
+                  <version>\${env.DEVELOCITY_VERSION}</version>
+              </extension>
+          </extensions>
+          EXTENSIONS
+          cat > "$project_dir/.mvn/$config_file" <<CONFIG
+          <${config_root}
+                  xmlns="${config_xmlns}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xsi:schemaLocation="${config_xmlns} ${config_schema}">
+              <server>
+                  <url>https://develocity.commonhaus.dev</url>
+              </server>
+          </${config_root}>
+          CONFIG
+          cat > "$project_dir/pom.xml" <<POM
+          <?xml version="1.0" encoding="UTF-8"?>
+          <project xmlns="http://maven.apache.org/POM/4.0.0"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>org.hibernate.build</groupId>
+              <artifactId>build-scan-publisher</artifactId>
+              <version>1.0.0</version>
+              <packaging>pom</packaging>
+              <build>
+                  <pluginManagement>
+                      <plugins>
+                          <plugin>
+                              <groupId>com.gradle</groupId>
+                              <artifactId>${artifact_id}</artifactId>
+                              <version>\${env.DEVELOCITY_VERSION}</version>
+                          </plugin>
+                      </plugins>
+                  </pluginManagement>
+              </build>
+          </project>
+          POM
+
           published=0
           failed=0
           scan_report=""
@@ -218,10 +377,11 @@ jobs:
               failed=$((failed + 1))
               continue
             fi
-            if output=$(./mvnw "${mvn_args[@]}" develocity:build-scan-publish-previous 2>&1); then
+
+            if output=$(mvn -f "$project_dir/pom.xml" "${goal_prefix}:build-scan-publish-previous" 2>&1); then
               echo "$output"
               published=$((published + 1))
-              url=$(echo "$output" | grep -A1 -i 'Publishing build scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1)
+              url=$(echo "$output" | grep -A1 -i 'Publishing build scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1) || true
               if [ -n "$url" ]; then
                 scan_report="${scan_report}- [${job_name}](${url})"$'\n'
               else
@@ -233,6 +393,7 @@ jobs:
               failed=$((failed + 1))
             fi
           done
+          rm -rf "$project_dir"
           echo "::notice::Published $published build scan(s), $failed failed"
           {
             echo "published=$published"
@@ -314,16 +475,14 @@ jobs:
           merge-multiple: 'true'
         continue-on-error: true
 
-      - name: Install Sonar CLI
+      - name: Install Sonar CLI ${{ env.SONAR_SCANNER_VERSION }}
         if: steps.checkout-pr.outputs.skip != 'true' && (needs.setup.outputs.is-pull-request == 'true' || steps.download-coverage.outcome == 'success')
         run: |
-          SONAR_HASH="2f1f412ad4c36d23266371367e13214fea03add397fb789bbb3282fdc9fb1372"
-          SONAR_SCANNER_VERSION="8.2.0.6438"
           curl --create-dirs --fail -sSLo "$HOME/.sonar/sonar-scanner.zip" \
             "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-$SONAR_SCANNER_VERSION.zip"
           DOWNLOADED_HASH=$(sha256sum "$HOME/.sonar/sonar-scanner.zip" | awk '{print $1}')
-          if [ "$DOWNLOADED_HASH" != "$SONAR_HASH" ]; then
-            echo "::error::Sonar scanner checksum mismatch. Expected: $SONAR_HASH, got: $DOWNLOADED_HASH"
+          if [ "$DOWNLOADED_HASH" != "$SONAR_SCANNER_SHA256" ]; then
+            echo "::error::Sonar scanner checksum mismatch. Expected: $SONAR_SCANNER_SHA256, got: $DOWNLOADED_HASH"
             exit 1
           fi
           unzip -o "$HOME/.sonar/sonar-scanner.zip" -d "$HOME/.sonar/"
