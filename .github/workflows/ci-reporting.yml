@@ -251,7 +251,7 @@ jobs:
               continue
             fi
 
-            if output=$(gradle -p "$project_dir" --no-build-cache buildScanPublishPrevious 2>&1); then
+            if output=$(gradle -p "$project_dir" --no-build-cache -Dscan.uploadInBackground=false buildScanPublishPrevious 2>&1); then
               echo "$output"
               published=$((published + 1))
               url=$(echo "$output" | grep -A1 -i 'Publishing build scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1) || true
@@ -338,6 +338,9 @@ jobs:
               <server>
                   <url>https://develocity.commonhaus.dev</url>
               </server>
+              <buildScan>
+                  <backgroundBuildScanUpload>false</backgroundBuildScanUpload>
+              </buildScan>
           </${config_root}>
           CONFIG
           cat > "$project_dir/pom.xml" <<POM
