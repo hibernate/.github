@@ -164,8 +164,17 @@ jobs:
             job_name=$(basename "$artifact_dir")
             version_dirs=()
             for d in "$artifact_dir"/*/; do
-              version_dirs+=("$(basename "$d")")
+              dir_name="$(basename "$d")"
+              if [ "$dir_name" = "spool" ]; then
+                continue
+              fi
+              version_dirs+=("$dir_name")
             done
+            if [ ${#version_dirs[@]} -eq 0 ]; then
+              echo "::warning::$job_name contains only background-upload (spool) data; skipping"
+              rm -rf "$artifact_dir"
+              continue
+            fi
             if [ ${#version_dirs[@]} -ne 1 ]; then
               echo "::error::Expected exactly one version directory in build scan data of $job_name, found ${#version_dirs[@]}"
               exit 1
