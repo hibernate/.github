@@ -68,6 +68,9 @@ hibernate/hibernate-search:
     maven-args: '-e -B --settings .github/mvn-settings.xml --no-transfer-progress'
     sonar-java-libraries: 'build/reports/target/sonar-dependencies/*.jar'
     sonar-coverage-report: 'build/reports/target/site/jacoco-aggregate/jacoco.xml'
+  branches:
+    '7.2':
+      java-version: '21'
 
 hibernate/hibernate-reactive:
   default:
