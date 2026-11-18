@@ -300,6 +300,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
           if [ "$failed" -gt 0 ]; then
+            echo "::notice title=Failure cause::$failed Develocity build scan(s) failed to publish. This is likely a Develocity server issue, not a code problem."
             exit 1
           fi
 
@@ -445,6 +446,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
           if [ "$failed" -gt 0 ]; then
+            echo "::notice title=Failure cause::$failed Develocity build scan(s) failed to publish. This is likely a Develocity server issue, not a code problem."
             exit 1
           fi
 
