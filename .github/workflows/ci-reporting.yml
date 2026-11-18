@@ -260,7 +260,23 @@ jobs:
               continue
             fi
 
-            if output=$(gradle -p "$project_dir" --no-build-cache -Dscan.uploadInBackground=false buildScanPublishPrevious 2>&1); then
+            publish_success=false
+            max_attempts=3
+            for attempt in $(seq 1 $max_attempts); do
+              if output=$(gradle -p "$project_dir" --no-build-cache -Dscan.uploadInBackground=false buildScanPublishPrevious 2>&1); then
+                publish_success=true
+                break
+              fi
+              echo "$output"
+              if [ "$attempt" -lt "$max_attempts" ] && echo "$output" | grep -q "error occurred creating your build scan"; then
+                echo "::warning::Server-side error publishing build scan from $job_name (attempt $attempt/$max_attempts), retrying in $((attempt * 5))s..."
+                sleep $((attempt * 5))
+              else
+                break
+              fi
+            done
+
+            if [ "$publish_success" = true ]; then
               echo "$output"
               published=$((published + 1))
               url=$(echo "$output" | grep -A1 -i 'Publishing build scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1) || true
@@ -270,7 +286,6 @@ jobs:
                 scan_report="${scan_report}- ${job_name}"$'\n'
               fi
             else
-              echo "$output"
               echo "::warning::Failed to publish build scan from $job_name"
               failed=$((failed + 1))
             fi
@@ -390,7 +405,23 @@ jobs:
               continue
             fi
 
-            if output=$(mvn -f "$project_dir/pom.xml" "${goal_prefix}:build-scan-publish-previous" 2>&1); then
+            publish_success=false
+            max_attempts=3
+            for attempt in $(seq 1 $max_attempts); do
+              if output=$(mvn -f "$project_dir/pom.xml" "${goal_prefix}:build-scan-publish-previous" 2>&1); then
+                publish_success=true
+                break
+              fi
+              echo "$output"
+              if [ "$attempt" -lt "$max_attempts" ] && echo "$output" | grep -q "error occurred creating your build scan"; then
+                echo "::warning::Server-side error publishing build scan from $job_name (attempt $attempt/$max_attempts), retrying in $((attempt * 5))s..."
+                sleep $((attempt * 5))
+              else
+                break
+              fi
+            done
+
+            if [ "$publish_success" = true ]; then
               echo "$output"
               published=$((published + 1))
               url=$(echo "$output" | grep -A1 -i 'Publishing build scan' | grep -oE 'https://[^ ]+/s/[a-z0-9]+' | head -1) || true
@@ -400,7 +431,6 @@ jobs:
                 scan_report="${scan_report}- ${job_name}"$'\n'
               fi
             else
-              echo "$output"
               echo "::warning::Failed to publish build scan from $job_name"
               failed=$((failed + 1))
             fi
