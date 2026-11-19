@@ -619,7 +619,7 @@ jobs:
           SURGE_TOKEN: ${{ secrets.SURGE_PREVIEW_TOKEN }}
           DEPLOY_DOMAIN: "${{ github.event.repository.name }}-pr-${{ needs.setup.outputs.pr-number }}-preview.surge.sh"
         run: |
-          if ! npx --ignore-scripts surge@0.31.1 ./docs-preview/ "https://${DEPLOY_DOMAIN}"; then
+          if ! npx --ignore-scripts surge@0.57.1 ./docs-preview/ "https://${DEPLOY_DOMAIN}"; then
             echo "::error title=Failure cause::Documentation preview deployment to Surge failed."
             exit 1
           fi
